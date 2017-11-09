@@ -7,16 +7,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// ProducerPool is a collection of websocket connections combined with 3 channels used to send and received message to and from the goroutines that control them
-type ProducerPool struct {
-	Producers    []*Producer
+// SocketPool is a collection of websocket connections combined with 3 channels used to send and received message to and from the goroutines that control them
+type SocketPool struct {
+	Sockets      []*Socket
 	FailureChan  chan FailureMSG
-	shutdownChan chan *Producer
-	DataChan     chan ProducerData
+	shutdownChan chan *Socket
+	DataChan     chan SocketData
 }
 
-// Producer type defines a websocket connection
-type Producer struct {
+// Socket type defines a websocket connection
+type Socket struct {
 	URL         string
 	Connection  *websocket.Conn
 	isConnected bool
@@ -24,35 +24,35 @@ type Producer struct {
 	ClosedAt    time.Time
 }
 
-// ProducerData wraps []byte and Producer instance together so receiver can identify the source
-type ProducerData struct {
-	Producer *Producer
-	Payload  []byte
+// SocketData wraps []byte and Socket instance together so receiver can identify the source
+type SocketData struct {
+	Socket  *Socket
+	Payload []byte
 }
 
-// FailureMSG wraps an error message with Producer instance so receiver can try reconnect and/or log error
+// FailureMSG wraps an error message with Socket instance so receiver can try reconnect and/or log error
 type FailureMSG struct {
-	Producer *Producer
-	Error    error
+	Socket *Socket
+	Error  error
 }
 
-// NewProducerPool creates a new instance of ProducerPool and returns a pointer to it
-func NewProducerPool(urls []string) *ProducerPool {
+// NewSocketPool creates a new instance of SocketPool and returns a pointer to it
+func NewSocketPool(urls []string) *SocketPool {
 	failure := make(chan FailureMSG)
-	shutdown := make(chan *Producer)
-	data := make(chan ProducerData)
+	shutdown := make(chan *Socket)
+	data := make(chan SocketData)
 
-	producers := []*Producer{}
+	sockets := []*Socket{}
 	for _, v := range urls {
-		p := &Producer{URL: v}
+		p := &Socket{URL: v}
 		success := p.Connect(failure, shutdown, data)
 		if success == true {
-			producers = append(producers, p)
+			sockets = append(sockets, p)
 		}
 	}
 
-	pool := &ProducerPool{
-		producers,
+	pool := &SocketPool{
+		sockets,
 		failure,
 		shutdown,
 		data,
@@ -60,9 +60,9 @@ func NewProducerPool(urls []string) *ProducerPool {
 	return pool
 }
 
-// Connect connects to websocket given a url string and three channels from ProducerPool type.
+// Connect connects to websocket given a url string and three channels from SocketPool type.
 // Creates a goroutine to receive and send data as well as to listen for failures and calls to shutdown
-func (p *Producer) Connect(failure chan<- FailureMSG, shutdown <-chan *Producer, data chan<- ProducerData) bool {
+func (p *Socket) Connect(failure chan<- FailureMSG, shutdown <-chan *Socket, data chan<- SocketData) bool {
 	c, _, err := websocket.DefaultDialer.Dial(p.URL, nil)
 	if err != nil {
 		log.Printf("Error connecting to websocket: \n%v\n%v", p.URL, err)
@@ -99,7 +99,7 @@ func (p *Producer) Connect(failure chan<- FailureMSG, shutdown <-chan *Producer,
 					failure <- FailureMSG{p, err}
 					return
 				}
-				data <- ProducerData{p, msg}
+				data <- SocketData{p, msg}
 			}
 		}
 	}()
