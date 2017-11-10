@@ -19,7 +19,9 @@ type Socket struct {
 	ClosedAt     time.Time
 }
 
-func (s *Socket) Read(shutdown <-chan string, errorChan chan<- ErrorMsg, pipe Pipe) {
+// ReadSocketBytes runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
+// It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
+func (s *Socket) ReadSocketBytes(shutdown <-chan string, errorChan chan<- ErrorMsg, pipe Pipe) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		if err != nil {
@@ -47,7 +49,9 @@ func (s *Socket) Read(shutdown <-chan string, errorChan chan<- ErrorMsg, pipe Pi
 	}
 }
 
-func (s *Socket) Write(shutdown <-chan string, errorChan chan<- ErrorMsg, pipe Pipe) {
+// WriteSocketBytes runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
+// It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
+func (s *Socket) WriteSocketBytes(shutdown <-chan string, errorChan chan<- ErrorMsg, pipe Pipe) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		if err != nil {
