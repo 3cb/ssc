@@ -1,3 +1,12 @@
+package ssc
+
+import (
+	"log"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
 // Socket type defines a websocket connection
 type Socket struct {
 	URL          string
