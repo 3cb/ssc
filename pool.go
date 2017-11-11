@@ -10,6 +10,7 @@ type SocketPool struct {
 	ClosedStack  map[string]*Socket
 	Pipes        *Pipes // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
 	ClosingQueue map[string]bool
+	Config       PoolConfig
 }
 
 // Pipes contains data communication channels:
@@ -38,6 +39,10 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
+	if config.isJSON == true && (config.DataJSON == nil || config.chJSON == nil) {
+		err := errors.New("if data type is JSON you must pass in values for DataJSON and chJSON that implement JSONDataContainer interface")
+		return nil, err
+	}
 	errorChan := make(chan ErrorMsg)
 	shutdown := make(chan string)
 	toPool := make(chan Data)
@@ -49,6 +54,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		ClosedStack:  make(map[string]*Socket),
 		Pipes:        pipes,
 		ClosingQueue: make(map[string]bool, len(urls)),
+		Config:       config,
 	}
 
 	for _, v := range urls {
