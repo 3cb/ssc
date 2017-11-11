@@ -11,13 +11,22 @@ import (
 // SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
 type SocketPool struct {
 	Stack        map[string]*Socket
-	Pipe         Pipe // {ToPool chan Data, FromPool chan Data}
-	ErrorChan    chan ErrorMsg
-	ShutdownChan chan string
+	Pipes        *Pipes // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
 	ClosingStack map[string]bool
 }
 
-// NewSocketPool creates a new instance of SocketPool and returns a pointer to it
+// Pipes contains data communication channels:
+// ToPool and FromPool have type Data which wraps a *Socket instance, MessageType, and a []byte
+// Shutdown carries shutdown command to goroutines reading/writing messages from websocket
+// Error channel carries websocket error messages from goroutines back to pool controller
+type Pipes struct {
+	ToPool   chan Data
+	FromPool chan Data
+	Shutdown chan string
+	Error    chan ErrorMsg
+}
+
+// NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, error) {
 	if readable == false && writable == false {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
@@ -27,13 +36,11 @@ func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, er
 	shutdown := make(chan string)
 	toPool := make(chan Data)
 	fromPool := make(chan Data)
-	pipe := Pipe{toPool, fromPool}
+	pipes := &Pipes{toPool, fromPool, shutdown, errorChan}
 
 	pool := &SocketPool{
-		Stack:        map[string]*Socket{},
-		Pipe:         pipe,
-		ErrorChan:    errorChan,
-		ShutdownChan: shutdown,
+		Stack:        make(map[string]*Socket, len(urls)),
+		Pipes:        pipes,
 		ClosingStack: make(map[string]bool, len(urls)),
 	}
 
@@ -51,7 +58,7 @@ func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, er
 			isWritable:   writable,
 			ClosingIndex: index,
 		}
-		success := s.Connect(errorChan, shutdown, pipe)
+		success := s.Connect(pipes)
 		if success == true {
 			pool.Stack[v] = s
 		}
@@ -63,69 +70,30 @@ func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, er
 // Control method listens for Error Messages and dispatches shutdown messages
 // It also routes Data messages to and from websockets
 func (p *SocketPool) Control() {
-	for {
-		select {
-		case e := <-p.ErrorChan:
-			switch {
-			case e.Error != nil:
-				log.Printf("Websocket error: %v\n%v: %v\n", e.Socket.URL, time.Now(), e.Error)
-				if e.Socket.ClosingIndex == 1 {
-					e.Socket.Connection.Close()
-					e.Socket.isConnected = false
-					e.Socket.ClosedAt = time.Now()
-					delete(p.Stack, e.Socket.URL)
-					log.Printf("Websocket at %v has been closed.", e.Socket.URL)
-				} else {
-					// at to closing stack send shutdown message
-				}
-				p.ShutdownChan <- e.Socket.URL
-			case e.Error == nil && e.Socket.ClosingIndex == 1:
-				e.Socket.Connection.Close()
-				e.Socket.isConnected = false
-				e.Socket.ClosedAt = time.Now()
-				delete(p.Stack, e.Socket.URL)
-				log.Printf("Websocket at %v has been closed.", e.Socket.URL)
-			case e.Error == nil && e.Socket.ClosingIndex == 2:
-				if p.ClosingStack[e.Socket.URL] == false {
-					p.ClosingStack[e.Socket.URL] = true
-				} else {
-					e.Socket.Connection.Close()
-					e.Socket.isConnected = false
-					e.Socket.ClosedAt = time.Now()
-					delete(p.ClosingStack, e.Socket.URL)
-					delete(p.Stack, e.Socket.URL)
-					log.Printf("Websocket at %v has been closed.", e.Socket.URL)
-				}
-			}
-		}
-	}
 }
 
-
-
-
-// Pipe contains two data communication channels: inbound and outbound
-type Pipe struct {
-	ToPool   chan Data
-	FromPool chan Data
-}
-
-// Data wraps message type, []byte, and Socket instance together so sender/receiver can identify the target/source respectively
+// Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
 type Data struct {
-	Socket  *Socket
+	URL     string
 	Type    int
 	Payload []byte
 }
 
+// JSONDataContainer is an interface with a GetURL() method that returns the type instances URL string and a GetPayload() method that returns and interface{} that takes shape of the callers data structure
+type JSONDataContainer interface {
+	GetURL() string
+	GetPayload() interface{}
+}
+
 // ErrorMsg wraps an error message with Socket instance so receiver can try reconnect and/or log error
 type ErrorMsg struct {
-	Socket *Socket
-	Error  error
+	URL   string
+	Error error
 }
 
 // Connect connects to websocket given a url string and three channels from SocketPool type.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
-func (s *Socket) Connect(errorChan chan<- ErrorMsg, shutdown <-chan string, pipe Pipe) bool {
+func (s *Socket) Connect(pipes *Pipes) bool {
 	c, _, err := websocket.DefaultDialer.Dial(s.URL, nil)
 	if err != nil {
 		log.Printf("Error connecting to websocket: \n%v\n%v", s.URL, err)
@@ -135,7 +103,6 @@ func (s *Socket) Connect(errorChan chan<- ErrorMsg, shutdown <-chan string, pipe
 	s.Connection = c
 	s.isConnected = true
 	s.OpenedAt = time.Now()
-
 
 	return true
 }
