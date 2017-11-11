@@ -2,17 +2,14 @@ package ssc
 
 import (
 	"errors"
-	"log"
-	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 // SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
 type SocketPool struct {
-	Stack        map[string]*Socket
+	OpenStack    map[string]*Socket
+	ClosedStack  map[string]*Socket
 	Pipes        *Pipes // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
-	ClosingStack map[string]bool
+	ClosingQueue map[string]bool
 }
 
 // Pipes contains data communication channels:
@@ -26,9 +23,18 @@ type Pipes struct {
 	Error    chan ErrorMsg
 }
 
+// PoolConfig is used to pass configuration settings to the Pool initialization function
+type PoolConfig struct {
+	isReadable bool
+	isWritable bool
+	isJSON     bool // If false messages will be read and written in bytes
+	DataJSON   JSONDataContainer
+	chJSON     chan JSONDataContainer
+}
+
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
-func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, error) {
-	if readable == false && writable == false {
+func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
+	if config.isReadable == false && config.isWritable == false {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
@@ -39,28 +45,32 @@ func NewSocketPool(urls []string, readable bool, writable bool) (*SocketPool, er
 	pipes := &Pipes{toPool, fromPool, shutdown, errorChan}
 
 	pool := &SocketPool{
-		Stack:        make(map[string]*Socket, len(urls)),
+		OpenStack:    make(map[string]*Socket, len(urls)),
+		ClosedStack:  make(map[string]*Socket),
 		Pipes:        pipes,
-		ClosingStack: make(map[string]bool, len(urls)),
+		ClosingQueue: make(map[string]bool, len(urls)),
 	}
 
 	for _, v := range urls {
 		index := 0
-		if readable == true {
+		if config.isReadable == true {
 			index++
 		}
-		if writable == true {
+		if config.isWritable == true {
 			index++
 		}
 		s := &Socket{
 			URL:          v,
-			isReadable:   readable,
-			isWritable:   writable,
+			isReadable:   config.isReadable,
+			isWritable:   config.isWritable,
+			isJSON:       config.isJSON,
 			ClosingIndex: index,
 		}
-		success := s.Connect(pipes)
+		success := s.Connect(pipes, config)
 		if success == true {
-			pool.Stack[v] = s
+			pool.OpenStack[v] = s
+		} else {
+			pool.ClosedStack[v] = s
 		}
 	}
 
@@ -79,9 +89,13 @@ type Data struct {
 	Payload []byte
 }
 
-// JSONDataContainer is an interface with a GetURL() method that returns the type instances URL string and a GetPayload() method that returns and interface{} that takes shape of the callers data structure
+// JSONDataContainer is an interface with 3 methods: GetURL(), SetURL(), and GetPayload()
+// GetURL() returns the type instance's URL string
+// SetURL() takes a *Socket instance URL string and sets it for the callers data type
+// GetPayload() returns an interface{} that takes shape of the callers data structure
 type JSONDataContainer interface {
 	GetURL() string
+	SetURL(string)
 	GetPayload() interface{}
 }
 
@@ -89,20 +103,4 @@ type JSONDataContainer interface {
 type ErrorMsg struct {
 	URL   string
 	Error error
-}
-
-// Connect connects to websocket given a url string and three channels from SocketPool type.
-// Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
-func (s *Socket) Connect(pipes *Pipes) bool {
-	c, _, err := websocket.DefaultDialer.Dial(s.URL, nil)
-	if err != nil {
-		log.Printf("Error connecting to websocket: \n%v\n%v", s.URL, err)
-		errorChan <- ErrorMsg{s, err}
-		return false
-	}
-	s.Connection = c
-	s.isConnected = true
-	s.OpenedAt = time.Now()
-
-	return true
 }
