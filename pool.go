@@ -18,28 +18,31 @@ type SocketPool struct {
 // Shutdown carries shutdown command to goroutines reading/writing messages from websocket
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	ToPool   chan Data
-	FromPool chan Data
-	Shutdown chan string
-	Error    chan ErrorMsg
+	ToPool       chan Data
+	FromPool     chan Data
+	ToPoolJSON   chan JSONDataContainer
+	FromPoolJSON chan JSONDataContainer
+	Shutdown     chan string
+	Error        chan ErrorMsg
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
 type PoolConfig struct {
-	isReadable bool
-	isWritable bool
-	isJSON     bool // If false messages will be read and written in bytes
-	DataJSON   JSONDataContainer
-	chJSON     chan JSONDataContainer
+	IsReadable   bool
+	IsWritable   bool
+	IsJSON       bool // If false messages will be read and written in bytes
+	DataJSON     JSONDataContainer
+	ToPoolJSON   chan JSONDataContainer
+	FromPoolJSON chan JSONDataContainer
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
-	if config.isReadable == false && config.isWritable == false {
+	if config.IsReadable == false && config.IsWritable == false {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
-	if config.isJSON == true && (config.DataJSON == nil || config.chJSON == nil) {
+	if config.IsJSON == true && (config.DataJSON == nil || config.ToPoolJSON == nil || config.FromPoolJSON == nil) {
 		err := errors.New("if data type is JSON you must pass in values for DataJSON and chJSON that implement JSONDataContainer interface")
 		return nil, err
 	}
@@ -47,30 +50,30 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	shutdown := make(chan string)
 	toPool := make(chan Data)
 	fromPool := make(chan Data)
-	pipes := &Pipes{toPool, fromPool, shutdown, errorChan}
+	pipes := &Pipes{toPool, fromPool, config.ToPoolJSON, config.FromPoolJSON, shutdown, errorChan}
 
 	pool := &SocketPool{
 		OpenStack:    make(map[string]*Socket, len(urls)),
-		ClosedStack:  make(map[string]*Socket),
+		ClosedStack:  make(map[string]*Socket, len(urls)),
 		Pipes:        pipes,
 		ClosingQueue: make(map[string]bool, len(urls)),
 		Config:       config,
 	}
 
 	for _, v := range urls {
-		index := 0
-		if config.isReadable == true {
-			index++
+		count := 0
+		if config.IsReadable == true {
+			count++
 		}
-		if config.isWritable == true {
-			index++
+		if config.IsWritable == true {
+			count++
 		}
 		s := &Socket{
-			URL:          v,
-			isReadable:   config.isReadable,
-			isWritable:   config.isWritable,
-			isJSON:       config.isJSON,
-			ClosingIndex: index,
+			URL:        v,
+			IsReadable: config.IsReadable,
+			IsWritable: config.IsWritable,
+			IsJSON:     config.IsJSON,
+			RoutineCt:  count,
 		}
 		success := s.Connect(pipes, config)
 		if success == true {
@@ -86,6 +89,60 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 // Control method listens for Error Messages and dispatches shutdown messages
 // It also routes Data messages to and from websockets
 func (p *SocketPool) Control() {
+	for {
+		select {
+		case e := <-p.Pipes.Error:
+			s := p.checkOpenStack(e.URL)
+			_, ok := p.ClosingQueue[s.URL]
+			if s.RoutineCt == 1 {
+				delete(p.OpenStack, s.URL)
+				p.ClosedStack[s.URL] = s
+			} else if s.RoutineCt == 2 && ok == true {
+				delete(p.OpenStack, s.URL)
+				delete(p.ClosingQueue, s.URL)
+				p.ClosedStack[s.URL] = s
+			} else if s.RoutineCt == 2 && ok == false {
+				p.ClosingQueue[s.URL] = true
+				p.Pipes.Shutdown <- s.URL
+			}
+		default:
+			v := <-p.Pipes.ToPool
+			p.Pipes.FromPool <- v
+		}
+	}
+}
+
+// ControlJSON controls flow of JSON data and manages errors and shutdown commands
+func (p *SocketPool) ControlJSON() {
+	for {
+		select {
+		case e := <-p.Pipes.Error:
+			s := p.checkOpenStack(e.URL)
+			_, ok := p.ClosingQueue[s.URL]
+			if s.RoutineCt == 1 {
+				delete(p.OpenStack, s.URL)
+				p.ClosedStack[s.URL] = s
+			} else if s.RoutineCt == 2 && ok == true {
+				delete(p.OpenStack, s.URL)
+				delete(p.ClosingQueue, s.URL)
+				p.ClosedStack[s.URL] = s
+			} else if s.RoutineCt == 2 && ok == false {
+				p.ClosingQueue[s.URL] = true
+				p.Pipes.Shutdown <- s.URL
+			}
+		default:
+			v := <-p.Pipes.ToPoolJSON
+			p.Pipes.FromPoolJSON <- v
+		}
+	}
+}
+
+func (p *SocketPool) checkOpenStack(url string) *Socket {
+	s, ok := p.OpenStack[url]
+	if ok {
+		return s
+	}
+	return nil
 }
 
 // Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
