@@ -20,8 +20,8 @@ type SocketPool struct {
 type Pipes struct {
 	ToPool       chan Data
 	FromPool     chan Data
-	ToPoolJSON   chan JSONDataContainer
-	FromPoolJSON chan JSONDataContainer
+	ToPoolJSON   chan JSONReaderWriter
+	FromPoolJSON chan JSONReaderWriter
 	Shutdown     chan string
 	Error        chan ErrorMsg
 }
@@ -31,9 +31,9 @@ type PoolConfig struct {
 	IsReadable   bool
 	IsWritable   bool
 	IsJSON       bool // If false messages will be read and written in bytes
-	DataJSON     JSONDataContainer
-	ToPoolJSON   chan JSONDataContainer
-	FromPoolJSON chan JSONDataContainer
+	DataJSON     JSONReaderWriter
+	ToPoolJSON   chan JSONReaderWriter
+	FromPoolJSON chan JSONReaderWriter
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
@@ -43,7 +43,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		return nil, err
 	}
 	if config.IsJSON == true && (config.DataJSON == nil || config.ToPoolJSON == nil || config.FromPoolJSON == nil) {
-		err := errors.New("if data type is JSON you must pass in values for DataJSON and chJSON that implement JSONDataContainer interface")
+		err := errors.New("if data type is JSON you must pass in values for DataJSON and JSON channels that implement JSONReaderWriter interface")
 		return nil, err
 	}
 	errorChan := make(chan ErrorMsg)
@@ -145,21 +145,19 @@ func (p *SocketPool) checkOpenStack(url string) *Socket {
 	return nil
 }
 
+// JSONReaderWriter is an interface with 2 methods. Both take a pointer to a websocket connection as a parameter:
+// JSONReader reads from the websocket into a struct and sends to a channel
+// JSONWriter gets a value from a channel and writes to a websocket
+type JSONReaderWriter interface {
+	JSONRead(s *Socket, toPoolJSON chan<- JSONReaderWriter, errorChan chan<- ErrorMsg) error
+	JSONWrite(s *Socket, fromPoolJSON <-chan JSONReaderWriter, errorChan chan<- ErrorMsg) error
+}
+
 // Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
 type Data struct {
 	URL     string
 	Type    int
 	Payload []byte
-}
-
-// JSONDataContainer is an interface with 3 methods: GetURL(), SetURL(), and GetPayload()
-// GetURL() returns the type instance's URL string
-// SetURL() takes a *Socket instance URL string and sets it for the callers data type
-// GetPayload() returns an interface{} that takes shape of the callers data structure
-type JSONDataContainer interface {
-	GetURL() string
-	SetURL(string)
-	GetPayload() interface{}
 }
 
 // ErrorMsg wraps an error message with Socket instance so receiver can try reconnect and/or log error
