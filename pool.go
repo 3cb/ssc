@@ -2,6 +2,7 @@ package ssc
 
 import (
 	"errors"
+	"log"
 )
 
 // SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
@@ -28,12 +29,10 @@ type Pipes struct {
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
 type PoolConfig struct {
-	IsReadable   bool
-	IsWritable   bool
-	IsJSON       bool // If false messages will be read and written in bytes
-	DataJSON     JSONReaderWriter
-	ToPoolJSON   chan JSONReaderWriter
-	FromPoolJSON chan JSONReaderWriter
+	IsReadable bool
+	IsWritable bool
+	IsJSON     bool // If false messages will be read and written in bytes
+	DataJSON   JSONReaderWriter
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
@@ -42,15 +41,20 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
-	if config.IsJSON == true && (config.DataJSON == nil || config.ToPoolJSON == nil || config.FromPoolJSON == nil) {
+	if config.IsJSON == true && config.DataJSON == nil {
 		err := errors.New("if data type is JSON you must pass in values for DataJSON and JSON channels that implement JSONReaderWriter interface")
 		return nil, err
 	}
-	errorChan := make(chan ErrorMsg)
-	shutdown := make(chan string)
-	toPool := make(chan Data)
-	fromPool := make(chan Data)
-	pipes := &Pipes{toPool, fromPool, config.ToPoolJSON, config.FromPoolJSON, shutdown, errorChan}
+	pipes := &Pipes{}
+	if config.IsJSON == true {
+		pipes.ToPoolJSON = make(chan JSONReaderWriter)
+		pipes.FromPoolJSON = make(chan JSONReaderWriter)
+	} else {
+		pipes.ToPool = make(chan Data)
+		pipes.FromPool = make(chan Data)
+	}
+	pipes.Shutdown = make(chan string)
+	pipes.Error = make(chan ErrorMsg)
 
 	pool := &SocketPool{
 		OpenStack:    make(map[string]*Socket, len(urls)),
@@ -132,6 +136,7 @@ func (p *SocketPool) ControlJSON() {
 			}
 		default:
 			v := <-p.Pipes.ToPoolJSON
+			log.Printf("Message:\n%v", v)
 			p.Pipes.FromPoolJSON <- v
 		}
 	}
