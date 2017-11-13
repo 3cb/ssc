@@ -49,7 +49,6 @@ func (s *Socket) Connect(pipes *Pipes, config PoolConfig) bool {
 			go s.WriteSocketBytes(pipes)
 		}
 	}
-
 	return true
 }
 

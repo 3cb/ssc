@@ -2,7 +2,7 @@ package ssc
 
 import (
 	"errors"
-	"log"
+	"time"
 )
 
 // SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
@@ -65,26 +65,28 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 
 	for _, v := range urls {
-		count := 0
-		if config.IsReadable == true {
-			count++
-		}
-		if config.IsWritable == true {
-			count++
-		}
-		s := &Socket{
-			URL:        v,
-			IsReadable: config.IsReadable,
-			IsWritable: config.IsWritable,
-			IsJSON:     config.IsJSON,
-			RoutineCt:  count,
-		}
-		success := s.Connect(pipes, config)
-		if success == true {
-			pool.OpenStack[v] = s
-		} else {
-			pool.ClosedStack[v] = s
-		}
+		go func(v string) {
+			count := 0
+			if config.IsReadable == true {
+				count++
+			}
+			if config.IsWritable == true {
+				count++
+			}
+			s := &Socket{
+				URL:        v,
+				IsReadable: config.IsReadable,
+				IsWritable: config.IsWritable,
+				IsJSON:     config.IsJSON,
+				RoutineCt:  count,
+			}
+			success := s.Connect(pipes, config)
+			if success == true {
+				pool.OpenStack[v] = s
+			} else {
+				pool.ClosedStack[v] = s
+			}
+		}(v)
 	}
 
 	return pool, nil
@@ -101,10 +103,12 @@ func (p *SocketPool) Control() {
 			if s.RoutineCt == 1 {
 				delete(p.OpenStack, s.URL)
 				p.ClosedStack[s.URL] = s
+				s.ClosedAt = time.Now()
 			} else if s.RoutineCt == 2 && ok == true {
 				delete(p.OpenStack, s.URL)
 				delete(p.ClosingQueue, s.URL)
 				p.ClosedStack[s.URL] = s
+				s.ClosedAt = time.Now()
 			} else if s.RoutineCt == 2 && ok == false {
 				p.ClosingQueue[s.URL] = true
 				p.Pipes.Shutdown <- s.URL
@@ -126,17 +130,18 @@ func (p *SocketPool) ControlJSON() {
 			if s.RoutineCt == 1 {
 				delete(p.OpenStack, s.URL)
 				p.ClosedStack[s.URL] = s
+				s.ClosedAt = time.Now()
 			} else if s.RoutineCt == 2 && ok == true {
 				delete(p.OpenStack, s.URL)
 				delete(p.ClosingQueue, s.URL)
 				p.ClosedStack[s.URL] = s
+				s.ClosedAt = time.Now()
 			} else if s.RoutineCt == 2 && ok == false {
 				p.ClosingQueue[s.URL] = true
 				p.Pipes.Shutdown <- s.URL
 			}
 		default:
 			v := <-p.Pipes.ToPoolJSON
-			log.Printf("Message:\n%v", v)
 			p.Pipes.FromPoolJSON <- v
 		}
 	}
