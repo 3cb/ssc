@@ -65,28 +65,26 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 
 	for _, v := range urls {
-		go func(v string) {
-			count := 0
-			if config.IsReadable == true {
-				count++
-			}
-			if config.IsWritable == true {
-				count++
-			}
-			s := &Socket{
-				URL:        v,
-				IsReadable: config.IsReadable,
-				IsWritable: config.IsWritable,
-				IsJSON:     config.IsJSON,
-				RoutineCt:  count,
-			}
-			success := s.Connect(pipes, config)
-			if success == true {
-				pool.OpenStack[v] = s
-			} else {
-				pool.ClosedStack[v] = s
-			}
-		}(v)
+		count := 0
+		if config.IsReadable == true {
+			count++
+		}
+		if config.IsWritable == true {
+			count++
+		}
+		s := &Socket{
+			URL:        v,
+			IsReadable: config.IsReadable,
+			IsWritable: config.IsWritable,
+			IsJSON:     config.IsJSON,
+			RoutineCt:  count,
+		}
+		success := s.Connect(pipes, config)
+		if success == true {
+			pool.OpenStack[v] = s
+		} else {
+			pool.ClosedStack[v] = s
+		}
 	}
 
 	return pool, nil
@@ -138,6 +136,7 @@ func (p *SocketPool) ControlJSON() {
 				s.ClosedAt = time.Now()
 			} else if s.RoutineCt == 2 && ok == false {
 				p.ClosingQueue[s.URL] = true
+				p.Pipes.Shutdown <- s.URL
 				p.Pipes.Shutdown <- s.URL
 			}
 		default:
