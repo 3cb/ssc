@@ -2,7 +2,7 @@ package ssc
 
 import (
 	"errors"
-	"time"
+	"log"
 )
 
 // SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
@@ -19,12 +19,14 @@ type SocketPool struct {
 // Shutdown carries shutdown command to goroutines reading/writing messages from websocket
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	ToPool       chan Data
-	FromPool     chan Data
-	ToPoolJSON   chan JSONReaderWriter
-	FromPoolJSON chan JSONReaderWriter
-	Shutdown     chan string
-	Error        chan ErrorMsg
+	ToPool        chan Data
+	FromPool      chan Data
+	ToPoolJSON    chan JSONReaderWriter
+	FromPoolJSON  chan JSONReaderWriter
+	ShutdownRead  chan string
+	ShutdownWrite chan string
+	ErrorRead     chan ErrorMsg
+	ErrorWrite    chan ErrorMsg
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
@@ -53,8 +55,10 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		pipes.ToPool = make(chan Data)
 		pipes.FromPool = make(chan Data)
 	}
-	pipes.Shutdown = make(chan string)
-	pipes.Error = make(chan ErrorMsg)
+	pipes.ShutdownRead = make(chan string)
+	pipes.ShutdownWrite = make(chan string)
+	pipes.ErrorRead = make(chan ErrorMsg)
+	pipes.ErrorWrite = make(chan ErrorMsg)
 
 	pool := &SocketPool{
 		OpenStack:    make(map[string]*Socket, len(urls)),
@@ -79,11 +83,12 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 			IsJSON:     config.IsJSON,
 			RoutineCt:  count,
 		}
-		success := s.Connect(pipes, config)
+		success, err := s.Connect(pipes, config)
 		if success == true {
 			pool.OpenStack[v] = s
 		} else {
 			pool.ClosedStack[v] = s
+			log.Printf("Error connecting to websocket(%v): %v\n", s.URL, err)
 		}
 	}
 
@@ -95,22 +100,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 func (p *SocketPool) Control() {
 	for {
 		select {
-		case e := <-p.Pipes.Error:
-			s := p.checkOpenStack(e.URL)
-			_, ok := p.ClosingQueue[s.URL]
-			if s.RoutineCt == 1 {
-				delete(p.OpenStack, s.URL)
-				p.ClosedStack[s.URL] = s
-				s.ClosedAt = time.Now()
-			} else if s.RoutineCt == 2 && ok == true {
-				delete(p.OpenStack, s.URL)
-				delete(p.ClosingQueue, s.URL)
-				p.ClosedStack[s.URL] = s
-				s.ClosedAt = time.Now()
-			} else if s.RoutineCt == 2 && ok == false {
-				p.ClosingQueue[s.URL] = true
-				p.Pipes.Shutdown <- s.URL
-			}
+
 		default:
 			v := <-p.Pipes.ToPool
 			p.Pipes.FromPool <- v
@@ -122,23 +112,7 @@ func (p *SocketPool) Control() {
 func (p *SocketPool) ControlJSON() {
 	for {
 		select {
-		case e := <-p.Pipes.Error:
-			s := p.checkOpenStack(e.URL)
-			_, ok := p.ClosingQueue[s.URL]
-			if s.RoutineCt == 1 {
-				delete(p.OpenStack, s.URL)
-				p.ClosedStack[s.URL] = s
-				s.ClosedAt = time.Now()
-			} else if s.RoutineCt == 2 && ok == true {
-				delete(p.OpenStack, s.URL)
-				delete(p.ClosingQueue, s.URL)
-				p.ClosedStack[s.URL] = s
-				s.ClosedAt = time.Now()
-			} else if s.RoutineCt == 2 && ok == false {
-				p.ClosingQueue[s.URL] = true
-				p.Pipes.Shutdown <- s.URL
-				p.Pipes.Shutdown <- s.URL
-			}
+
 		default:
 			v := <-p.Pipes.ToPoolJSON
 			p.Pipes.FromPoolJSON <- v
