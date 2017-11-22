@@ -39,6 +39,7 @@ type PoolConfig struct {
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
+	println("Inside NewSocketPool()")
 	if config.IsReadable == false && config.IsWritable == false {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
@@ -85,9 +86,10 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		success, err := s.Connect(pipes, config)
 		if success == true {
 			pool.OpenStack[v] = s
+			log.Printf("Connected to websocket(%v)\nAdded to Open Stack", v)
 		} else {
 			pool.ClosedStack[v] = s
-			log.Printf("Error connecting to websocket(%v): %v\n", s.URL, err)
+			log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", s.URL, err)
 		}
 	}
 
@@ -97,6 +99,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 // Control method listens for Error Messages and dispatches shutdown messages
 // It also routes Data messages to and from websockets
 func (p *SocketPool) Control() {
+	log.Printf("Starting Control()")
 	for {
 		select {
 		case e := <-p.Pipes.ErrorRead:
