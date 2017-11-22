@@ -15,7 +15,6 @@ type Socket struct {
 	IsReadable  bool
 	IsWritable  bool
 	IsJSON      bool
-	RoutineCt   int // 1 if only read OR write. 2 if read AND write
 	OpenedAt    time.Time
 	ClosedAt    time.Time
 }

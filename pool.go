@@ -9,8 +9,8 @@ import (
 type SocketPool struct {
 	OpenStack    map[string]*Socket
 	ClosedStack  map[string]*Socket
-	Pipes        *Pipes // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
-	ClosingQueue map[string]bool
+	Pipes        *Pipes            // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
+	ClosingQueue map[string]string // 'read' or 'write'
 	Config       PoolConfig
 }
 
@@ -64,7 +64,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		OpenStack:    make(map[string]*Socket, len(urls)),
 		ClosedStack:  make(map[string]*Socket, len(urls)),
 		Pipes:        pipes,
-		ClosingQueue: make(map[string]bool, len(urls)),
+		ClosingQueue: make(map[string]string, len(urls)),
 		Config:       config,
 	}
 
@@ -81,7 +81,6 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 			IsReadable: config.IsReadable,
 			IsWritable: config.IsWritable,
 			IsJSON:     config.IsJSON,
-			RoutineCt:  count,
 		}
 		success, err := s.Connect(pipes, config)
 		if success == true {
@@ -100,22 +99,50 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 func (p *SocketPool) Control() {
 	for {
 		select {
-
+		case e := <-p.Pipes.ErrorRead:
+			s := p.checkOpenStack(e.URL)
+			if s != nil {
+				rw, ok := p.ClosingQueue[e.URL]
+				if ok == false {
+					if s.IsWritable == true {
+						p.ClosingQueue[e.URL] = "read"
+						p.Pipes.ShutdownWrite <- e.URL
+					} else {
+						p.ClosedStack[e.URL] = s
+						delete(p.OpenStack, e.URL)
+					}
+				} else if ok == true && rw == "write" {
+					delete(p.ClosingQueue, e.URL)
+					p.ClosedStack[e.URL] = s
+					delete(p.OpenStack, e.URL)
+				}
+			}
+		case e := <-p.Pipes.ErrorWrite:
+			s := p.checkOpenStack(e.URL)
+			if s != nil {
+				rw, ok := p.ClosingQueue[e.URL]
+				if ok == false {
+					if s.IsReadable == true {
+						p.ClosingQueue[e.URL] = "write"
+						p.Pipes.ShutdownRead <- e.URL
+					} else {
+						p.ClosedStack[e.URL] = s
+						delete(p.OpenStack, e.URL)
+					}
+				} else if ok == true && rw == "read" {
+					delete(p.ClosingQueue, e.URL)
+					p.ClosedStack[e.URL] = s
+					delete(p.OpenStack, e.URL)
+				}
+			}
 		default:
-			v := <-p.Pipes.ToPool
-			p.Pipes.FromPool <- v
-		}
-	}
-}
-
-// ControlJSON controls flow of JSON data and manages errors and shutdown commands
-func (p *SocketPool) ControlJSON() {
-	for {
-		select {
-
-		default:
-			v := <-p.Pipes.ToPoolJSON
-			p.Pipes.FromPoolJSON <- v
+			if p.Config.IsJSON == true {
+				v := <-p.Pipes.ToPoolJSON
+				p.Pipes.FromPoolJSON <- v
+			} else {
+				v := <-p.Pipes.ToPool
+				p.Pipes.FromPool <- v
+			}
 		}
 	}
 }
