@@ -39,7 +39,6 @@ type PoolConfig struct {
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
-	println("Inside NewSocketPool()")
 	if config.IsReadable == false && config.IsWritable == false {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
@@ -99,7 +98,6 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 // Control method listens for Error Messages and dispatches shutdown messages
 // It also routes Data messages to and from websockets
 func (p *SocketPool) Control() {
-	log.Printf("Starting Control()")
 	for {
 		select {
 		case e := <-p.Pipes.ErrorRead:
