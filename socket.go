@@ -19,7 +19,7 @@ type Socket struct {
 	ClosedAt    time.Time
 }
 
-// Connect connects to websocket given a url string and three channels from SocketPool type.
+// Connect connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
 func (s *Socket) Connect(pipes *Pipes, config PoolConfig) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
@@ -82,7 +82,7 @@ func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 // ReadSocketJSON runs a continuous loop that reads messages from websocket and sends the JSON encoded message to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
 // Parameter v represents the data structure caller wants ReadJSON() methods to parse message data into
-// Parameter (ch <-chan JSONDataContainer) is a channel with v's type passed in by caller
+// pipes conatains a channel with v's type, passed in by caller
 func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
@@ -141,8 +141,8 @@ func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 	}
 }
 
-// WriteSocketJSON runs a continuous loop that reads msg values from the ch channel and writes them to the websocket.
-// It listen for shutdown command from the controller and will close websocket connection on any such command as well as any error writing to the websocket
+// WriteSocketJSON runs a continuous loop that reads values sent from the SocketPool controller and writes them to the websocket.
+// It listens for shutdown command from the controller and will close websocket connection on any such command as well as on any error writing to the websocket
 func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))

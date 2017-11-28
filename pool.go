@@ -5,7 +5,9 @@ import (
 	"log"
 )
 
-// SocketPool is a collection of websocket connections combined with 4 channels which are used to send and received messages to and from the goroutines that control them
+// SocketPool is a collection of websocket connections combined with
+// channels which are used to send and received messages to and from
+// the goroutines that control them
 type SocketPool struct {
 	OpenStack    map[string]*Socket
 	ClosedStack  map[string]*Socket
@@ -33,7 +35,7 @@ type Pipes struct {
 type PoolConfig struct {
 	IsReadable bool
 	IsWritable bool
-	IsJSON     bool // If false messages will be read and written in bytes
+	IsJSON     bool // If false, messages will be read/written in bytes
 	DataJSON   JSONReaderWriter
 }
 
@@ -69,13 +71,6 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 
 	for _, v := range urls {
-		count := 0
-		if config.IsReadable == true {
-			count++
-		}
-		if config.IsWritable == true {
-			count++
-		}
 		s := &Socket{
 			URL:        v,
 			IsReadable: config.IsReadable,
