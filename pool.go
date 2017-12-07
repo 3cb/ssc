@@ -3,6 +3,7 @@ package ssc
 import (
 	"errors"
 	"log"
+	"time"
 )
 
 // SocketPool is a collection of websocket connections combined with
@@ -17,16 +18,16 @@ type SocketPool struct {
 }
 
 // Pipes contains data communication channels:
-// ToPool and FromPool have type Data which wraps a *Socket instance, MessageType, and a []byte
-// Shutdown carries shutdown command to goroutines reading/writing messages from websocket
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	ToPool       chan Data
-	FromPool     chan Data
-	ToPoolJSON   chan JSONReaderWriter
-	FromPoolJSON chan JSONReaderWriter
-	ErrorRead    chan ErrorMsg
-	ErrorWrite   chan ErrorMsg
+	InboundBytes    chan Data
+	InboundJSON     chan JSONReaderWriter
+	OutboundBytes   chan Data
+	OutboundJSON    chan JSONReaderWriter
+	FromSocketBytes chan Data
+	FromSocketJSON  chan JSONReaderWriter
+	ErrorRead       chan ErrorMsg
+	ErrorWrite      chan ErrorMsg
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
@@ -49,12 +50,13 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 	pipes := &Pipes{}
 	if config.IsJSON == true {
-		pipes.ToPoolJSON = make(chan JSONReaderWriter)
-		// Move FromPoolJSON channel to individual socket instances
-		pipes.FromPoolJSON = make(chan JSONReaderWriter)
+		pipes.InboundJSON = make(chan JSONReaderWriter)
+		pipes.OutboundJSON = make(chan JSONReaderWriter)
+		pipes.FromSocketJSON = make(chan JSONReaderWriter)
 	} else {
-		pipes.ToPool = make(chan Data)
-		pipes.FromPool = make(chan Data)
+		pipes.InboundBytes = make(chan Data)
+		pipes.OutboundBytes = make(chan Data)
+		pipes.FromSocketBytes = make(chan Data)
 	}
 	pipes.ErrorRead = make(chan ErrorMsg)
 	pipes.ErrorWrite = make(chan ErrorMsg)
@@ -68,11 +70,22 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 
 	for _, v := range urls {
+		var chBytes chan Data
+		var chJSON chan JSONReaderWriter
+
+		if config.IsJSON == true {
+			chJSON = make(chan JSONReaderWriter)
+		} else {
+			chBytes = make(chan Data)
+		}
+
 		s := &Socket{
 			URL:           v,
 			IsReadable:    config.IsReadable,
 			IsWritable:    config.IsWritable,
 			IsJSON:        config.IsJSON,
+			FromPoolBytes: chBytes,
+			FromPoolJSON:  chJSON,
 			ShutdownRead:  make(chan struct{}),
 			ShutdownWrite: make(chan struct{}),
 		}
@@ -104,13 +117,15 @@ func (p *SocketPool) Control() {
 						sock := p.OpenStack[e.URL]
 						sock.ShutdownWrite <- struct{}{}
 					} else {
-						p.ClosedStack[e.URL] = s
+						s.ClosedAt = time.Now()
 						delete(p.OpenStack, e.URL)
+						p.ClosedStack[e.URL] = s
 					}
 				} else if ok == true && rw == "write" {
 					delete(p.ClosingQueue, e.URL)
-					p.ClosedStack[e.URL] = s
+					s.ClosedAt = time.Now()
 					delete(p.OpenStack, e.URL)
+					p.ClosedStack[e.URL] = s
 				}
 			}
 		case e := <-p.Pipes.ErrorWrite:
@@ -123,22 +138,24 @@ func (p *SocketPool) Control() {
 						sock := p.OpenStack[e.URL]
 						sock.ShutdownRead <- struct{}{}
 					} else {
-						p.ClosedStack[e.URL] = s
+						s.ClosedAt = time.Now()
 						delete(p.OpenStack, e.URL)
+						p.ClosedStack[e.URL] = s
 					}
 				} else if ok == true && rw == "read" {
 					delete(p.ClosingQueue, e.URL)
-					p.ClosedStack[e.URL] = s
+					s.ClosedAt = time.Now()
 					delete(p.OpenStack, e.URL)
+					p.ClosedStack[e.URL] = s
 				}
 			}
 		default:
 			if p.Config.IsJSON == true {
-				v := <-p.Pipes.ToPoolJSON
-				p.Pipes.FromPoolJSON <- v
+				v := <-p.Pipes.FromSocketJSON
+				p.Pipes.OutboundJSON <- v
 			} else {
-				v := <-p.Pipes.ToPool
-				p.Pipes.FromPool <- v
+				v := <-p.Pipes.FromSocketBytes
+				p.Pipes.OutboundBytes <- v
 			}
 		}
 	}
