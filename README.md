@@ -52,8 +52,14 @@ An example of this can be seen in the "go_stream" branch here: https://github.co
 
 ## Work Left To Do
 
-Convert OpenStack and ClosedStack to `map[*Socket]bool` to enable usage for client side websocket connections -- move url slice to config object for NewSocketPool().
+Add update of closing time inside Control() method
 
-ssc.Add() method which allows caller to add individual websocket connection after pool has already been created.
+Make websocket connections concurrent -- add mtx to prevent data race
 
-ssc.Remove() method which allows caller to remove individual websocket connection by sending shutdown signal through channel.
+Add auto reconnect feature -- requires sync.Mutex field in SocketPool type to prevent data race
+
+ssc.AddSocket() method which allows caller to add individual websocket connection after pool has already been created.
+
+ssc.RemoveSocket() method which allows caller to remove individual websocket connection by sending shutdown signal through channel and removing connection from both Stacks.
+
+ssc.ShutdownSocket() method will close websocket connection but will leave it in the pool and merely move from OpenStack to ClosedStack
