@@ -11,8 +11,8 @@ import (
 type SocketPool struct {
 	OpenStack    map[string]*Socket
 	ClosedStack  map[string]*Socket
-	Pipes        *Pipes            // {ToPool chan Data, FromPool chan Data, Shutdown chan string, Error chan ErrorMsg}
 	ClosingQueue map[string]string // 'read' or 'write'
+	Pipes        *Pipes
 	Config       PoolConfig
 }
 
@@ -21,14 +21,12 @@ type SocketPool struct {
 // Shutdown carries shutdown command to goroutines reading/writing messages from websocket
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	ToPool        chan Data
-	FromPool      chan Data
-	ToPoolJSON    chan JSONReaderWriter
-	FromPoolJSON  chan JSONReaderWriter
-	ShutdownRead  chan string
-	ShutdownWrite chan string
-	ErrorRead     chan ErrorMsg
-	ErrorWrite    chan ErrorMsg
+	ToPool       chan Data
+	FromPool     chan Data
+	ToPoolJSON   chan JSONReaderWriter
+	FromPoolJSON chan JSONReaderWriter
+	ErrorRead    chan ErrorMsg
+	ErrorWrite   chan ErrorMsg
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
@@ -52,35 +50,36 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	pipes := &Pipes{}
 	if config.IsJSON == true {
 		pipes.ToPoolJSON = make(chan JSONReaderWriter)
+		// Move FromPoolJSON channel to individual socket instances
 		pipes.FromPoolJSON = make(chan JSONReaderWriter)
 	} else {
 		pipes.ToPool = make(chan Data)
 		pipes.FromPool = make(chan Data)
 	}
-	pipes.ShutdownRead = make(chan string)
-	pipes.ShutdownWrite = make(chan string)
 	pipes.ErrorRead = make(chan ErrorMsg)
 	pipes.ErrorWrite = make(chan ErrorMsg)
 
 	pool := &SocketPool{
 		OpenStack:    make(map[string]*Socket, len(urls)),
 		ClosedStack:  make(map[string]*Socket, len(urls)),
-		Pipes:        pipes,
 		ClosingQueue: make(map[string]string, len(urls)),
+		Pipes:        pipes,
 		Config:       config,
 	}
 
 	for _, v := range urls {
 		s := &Socket{
-			URL:        v,
-			IsReadable: config.IsReadable,
-			IsWritable: config.IsWritable,
-			IsJSON:     config.IsJSON,
+			URL:           v,
+			IsReadable:    config.IsReadable,
+			IsWritable:    config.IsWritable,
+			IsJSON:        config.IsJSON,
+			ShutdownRead:  make(chan struct{}),
+			ShutdownWrite: make(chan struct{}),
 		}
-		success, err := s.Connect(pipes, config)
+		success, err := s.connect(pipes, config)
 		if success == true {
 			pool.OpenStack[v] = s
-			log.Printf("Connected to websocket(%v)\nAdded to Open Stack", v)
+			log.Printf("Connected to websocket(%v)\nAdded to Open Stack", s.URL)
 		} else {
 			pool.ClosedStack[v] = s
 			log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", s.URL, err)
@@ -102,7 +101,8 @@ func (p *SocketPool) Control() {
 				if ok == false {
 					if s.IsWritable == true {
 						p.ClosingQueue[e.URL] = "read"
-						p.Pipes.ShutdownWrite <- e.URL
+						sock := p.OpenStack[e.URL]
+						sock.ShutdownWrite <- struct{}{}
 					} else {
 						p.ClosedStack[e.URL] = s
 						delete(p.OpenStack, e.URL)
@@ -120,7 +120,8 @@ func (p *SocketPool) Control() {
 				if ok == false {
 					if s.IsReadable == true {
 						p.ClosingQueue[e.URL] = "write"
-						p.Pipes.ShutdownRead <- e.URL
+						sock := p.OpenStack[e.URL]
+						sock.ShutdownRead <- struct{}{}
 					} else {
 						p.ClosedStack[e.URL] = s
 						delete(p.OpenStack, e.URL)
@@ -143,12 +144,64 @@ func (p *SocketPool) Control() {
 	}
 }
 
+// AddSocket allows caller to add individual websocket connections to an existing pool of connections
+// New connection with adopt existing pool configuration(SocketPool.Config)
+func (p *SocketPool) AddSocket(url string) {
+	s := &Socket{
+		URL:        url,
+		IsReadable: p.Config.IsReadable,
+		IsWritable: p.Config.IsWritable,
+		IsJSON:     p.Config.IsJSON,
+	}
+	success, err := s.connect(p.Pipes, p.Config)
+	if success {
+		p.OpenStack[url] = s
+		log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
+	} else {
+		p.ClosedStack[url] = s
+		log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", url, err)
+	}
+}
+
+// RemoveSocket allows caller to remove an individual websocmet connection from a SocketPool instance
+// Function will send shutdown message and listen for confirmation through error channel
+func (p *SocketPool) RemoveSocket(url string) {
+	_, ok := p.ClosedStack[url]
+	if ok {
+		delete(p.ClosedStack, url)
+		return
+	}
+	s, ok := p.OpenStack[url]
+	if ok {
+		p.listenDeleteClosedStack(url)
+		s.ShutdownRead <- struct{}{}
+		s.ShutdownWrite <- struct{}{}
+		return
+	}
+	closed, ok := p.ClosingQueue[url]
+	if ok && closed == "read" {
+		// ======================================================
+	} else if ok && closed == "write" {
+		// ======================================================
+	}
+}
+
 func (p *SocketPool) checkOpenStack(url string) *Socket {
 	s, ok := p.OpenStack[url]
 	if ok {
 		return s
 	}
 	return nil
+}
+
+func (p *SocketPool) listenDeleteClosedStack(url string) {
+	for {
+		_, ok := p.ClosedStack[url]
+		if ok {
+			delete(p.ClosedStack, url)
+			return
+		}
+	}
 }
 
 // JSONReaderWriter is an interface with 2 methods. Both take a pointer to a websocket connection as a parameter:

@@ -9,19 +9,21 @@ import (
 
 // Socket type defines a websocket connection
 type Socket struct {
-	URL         string
-	Connection  *websocket.Conn
-	IsConnected bool
-	IsReadable  bool
-	IsWritable  bool
-	IsJSON      bool
-	OpenedAt    time.Time
-	ClosedAt    time.Time
+	URL           string
+	Connection    *websocket.Conn
+	IsConnected   bool
+	IsReadable    bool
+	IsWritable    bool
+	IsJSON        bool
+	ShutdownRead  chan struct{}
+	ShutdownWrite chan struct{}
+	OpenedAt      time.Time
+	ClosedAt      time.Time
 }
 
 // Connect connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
-func (s *Socket) Connect(pipes *Pipes, config PoolConfig) (bool, error) {
+func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
@@ -61,12 +63,10 @@ func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 	}()
 	for {
 		select {
-		case url := <-pipes.ShutdownRead:
-			if url == s.URL {
-				log.Printf("Shutdown message received from controller(%v).\n", url)
-				pipes.ErrorRead <- ErrorMsg{s.URL, nil}
-				return
-			}
+		case <-s.ShutdownRead:
+			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
+			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
+			return
 		default:
 			readType, msg, err := s.Connection.ReadMessage()
 			if err != nil {
@@ -94,12 +94,10 @@ func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 
 	for {
 		select {
-		case url := <-pipes.ShutdownRead:
-			if url == s.URL {
-				log.Printf("Shutdown message received from controller(%v).\n", url)
-				pipes.ErrorRead <- ErrorMsg{s.URL, nil}
-				return
-			}
+		case <-s.ShutdownRead:
+			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
+			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
+			return
 		default:
 			err := data.JSONRead(s, pipes.ToPoolJSON, pipes.ErrorRead)
 			if err != nil {
@@ -123,12 +121,10 @@ func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 	}()
 	for {
 		select {
-		case url := <-pipes.ShutdownWrite:
-			if url == s.URL {
-				log.Printf("Shutdown message received from controller(%v).\n", url)
-				pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
-				return
-			}
+		case <-s.ShutdownWrite:
+			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
+			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
+			return
 		default:
 			msg := <-pipes.FromPool
 			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
@@ -153,12 +149,10 @@ func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	}()
 	for {
 		select {
-		case url := <-pipes.ShutdownWrite:
-			if url == s.URL {
-				log.Printf("Shutdown message received from controller(%v).\n", url)
-				pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
-				return
-			}
+		case <-s.ShutdownWrite:
+			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
+			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
+			return
 		default:
 			err := data.JSONWrite(s, pipes.FromPoolJSON, pipes.ErrorWrite)
 			if err != nil {
