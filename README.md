@@ -34,7 +34,7 @@ config := ssc.PoolConfig{
 
 pool, err := ssc.NewSocketPool(sockets, config)
 if err != nil {
-    log.Printf("Error starting new Socket Pool. Cannot start server.")
+    log.Printf("Error starting new Socket Pool.")
 	return
 }
 ```
@@ -52,14 +52,14 @@ An example of this can be seen in the "go_stream" branch here: https://github.co
 
 ## Work Left To Do
 
-Add update of closing time inside Control() method
+-> ssc.ShutdownSocket() method will close websocket connection but will leave it in the pool and merely move from OpenStack to ClosedStack
 
-Make websocket connections concurrent -- add mtx to prevent data race
+-> Add option to create empty SocketPool
 
-Add auto reconnect feature -- requires sync.Mutex field in SocketPool type to prevent data race
+-> Remove checkOpenStack() (value, ok := p.OpenStack[url])
 
-ssc.AddSocket() method which allows caller to add individual websocket connection after pool has already been created.
+-> Make websocket connection initialization concurrent -- add mtx to prevent data race
 
-ssc.RemoveSocket() method which allows caller to remove individual websocket connection by sending shutdown signal through channel and removing connection from both Stacks.
+-> Add auto reconnect feature -- requires sync.Mutex field in SocketPool type to prevent data race
 
-ssc.ShutdownSocket() method will close websocket connection but will leave it in the pool and merely move from OpenStack to ClosedStack
+-> TESTS!
