@@ -223,14 +223,9 @@ func (p *SocketPool) ControlShutdown() {
 }
 
 // AddSocket allows caller to add individual websocket connections to an existing pool of connections
-// New connection with adopt existing pool configuration(SocketPool.Config)
+// New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddSocket(url string) {
-	s := &Socket{
-		URL:        url,
-		IsReadable: p.Config.IsReadable,
-		IsWritable: p.Config.IsWritable,
-		IsJSON:     p.Config.IsJSON,
-	}
+	s := newSocketInstance(url, p.Config)
 	success, err := s.connect(p.Pipes, p.Config)
 	if success {
 		p.OpenStack[url] = s
