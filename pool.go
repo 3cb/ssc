@@ -237,25 +237,36 @@ func (p *SocketPool) AddSocket(url string) {
 }
 
 // RemoveSocket allows caller to remove an individual websocmet connection from a SocketPool instance
-// Function will send shutdown message and listen for confirmation through error channel
+// Function will send shutdown message and wait for confirmation from SocketPool.RemovalComplete channel
+// Method deletes Socket connection from ClosedStack before it exits
 func (p *SocketPool) RemoveSocket(url string) {
+	defer func() {
+		delete(p.ClosedStack, url)
+		log.Printf("Connection to websocket at %v has been closed and removed from Pool.  %v\n", url, time.Now())
+	}()
 	_, ok := p.ClosedStack[url]
 	if ok {
-		delete(p.ClosedStack, url)
 		return
 	}
-	s, ok := p.OpenStack[url]
-	if ok {
-		p.listenDeleteClosedStack(url)
-		s.ShutdownRead <- struct{}{}
-		s.ShutdownWrite <- struct{}{}
-		return
-	}
+
+	s := &Socket{}
 	closed, ok := p.ClosingQueue[url]
 	if ok && closed == "read" {
-		// ======================================================
+		s = p.OpenStack[url]
+		s.ShutdownWrite <- struct{}{}
 	} else if ok && closed == "write" {
-		// ======================================================
+		s = p.OpenStack[url]
+		s.ShutdownRead <- struct{}{}
+	} else {
+		s.ShutdownRead <- struct{}{}
+		s.ShutdownWrite <- struct{}{}
+	}
+
+	for {
+		_, ok := p.ClosedStack[url]
+		if ok {
+			return
+		}
 	}
 }
 
@@ -265,14 +276,4 @@ func (p *SocketPool) checkOpenStack(url string) *Socket {
 		return s
 	}
 	return nil
-}
-
-func (p *SocketPool) listenDeleteClosedStack(url string) {
-	for {
-		_, ok := p.ClosedStack[url]
-		if ok {
-			delete(p.ClosedStack, url)
-			return
-		}
-	}
 }
