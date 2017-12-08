@@ -23,6 +23,29 @@ type Socket struct {
 	ClosedAt      time.Time
 }
 
+func newSocketInstance(url string, config PoolConfig) *Socket {
+	var chBytes chan Data
+	var chJSON chan JSONReaderWriter
+
+	if config.IsJSON == true {
+		chJSON = make(chan JSONReaderWriter)
+	} else {
+		chBytes = make(chan Data)
+	}
+
+	s := &Socket{
+		URL:           url,
+		IsReadable:    config.IsReadable,
+		IsWritable:    config.IsWritable,
+		IsJSON:        config.IsJSON,
+		FromPoolBytes: chBytes,
+		FromPoolJSON:  chJSON,
+		ShutdownRead:  make(chan struct{}),
+		ShutdownWrite: make(chan struct{}),
+	}
+	return s
+}
+
 // Connect connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
 func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {

@@ -76,25 +76,7 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	}
 
 	for _, v := range urls {
-		var chBytes chan Data
-		var chJSON chan JSONReaderWriter
-
-		if config.IsJSON == true {
-			chJSON = make(chan JSONReaderWriter)
-		} else {
-			chBytes = make(chan Data)
-		}
-
-		s := &Socket{
-			URL:           v,
-			IsReadable:    config.IsReadable,
-			IsWritable:    config.IsWritable,
-			IsJSON:        config.IsJSON,
-			FromPoolBytes: chBytes,
-			FromPoolJSON:  chJSON,
-			ShutdownRead:  make(chan struct{}),
-			ShutdownWrite: make(chan struct{}),
-		}
+		s := newSocketInstance(v, config)
 		success, err := s.connect(pipes, config)
 		if success == true {
 			pool.OpenStack[v] = s
