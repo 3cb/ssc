@@ -56,6 +56,10 @@ An example of this can be seen in the "go_stream" branch here: https://github.co
 
 -> Add option to create empty SocketPool
 
+-> Make read/write methods for sockets unexportable
+
+-> Make Control methods unexportable
+
 -> Remove checkOpenStack() (value, ok := p.OpenStack[url])
 
 -> Make websocket connection initialization concurrent -- add mtx to prevent data race
