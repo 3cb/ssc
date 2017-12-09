@@ -54,7 +54,9 @@ An example of this can be seen in the "go_stream" branch here: https://github.co
 
 -> ssc.ShutdownSocket() method will close websocket connection but will leave it in the pool and merely move from OpenStack to ClosedStack
 
--> Make closing websocket conditional in deferred funcs in read/write groutines
+-> Replace infinite for loop with Removal channel functionality -- RemoveSocket()???
+
+-> Make closing websocket conditional in deferred funcs for read/write groutines
 
 -> Add option to create empty SocketPool
 
