@@ -26,9 +26,9 @@ type Pipes struct {
 	OutboundJSON        chan JSONReaderWriter
 	FromSocketBytes     chan Data
 	FromSocketJSON      chan JSONReaderWriter
-	StopControlRead     chan struct{}
-	StopControlWrite    chan struct{}
-	StopControlShutdown chan struct{}
+	StopReadControl     chan struct{}
+	StopWriteControl    chan struct{}
+	StopShutdownControl chan struct{}
 	ErrorRead           chan ErrorMsg
 	ErrorWrite          chan ErrorMsg
 }
@@ -61,9 +61,9 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		pipes.OutboundBytes = make(chan Data)
 		pipes.FromSocketBytes = make(chan Data)
 	}
-	pipes.StopControlRead = make(chan struct{})
-	pipes.StopControlWrite = make(chan struct{})
-	pipes.StopControlShutdown = make(chan struct{})
+	pipes.StopReadControl = make(chan struct{})
+	pipes.StopWriteControl = make(chan struct{})
+	pipes.StopShutdownControl = make(chan struct{})
 	pipes.ErrorRead = make(chan ErrorMsg)
 	pipes.ErrorWrite = make(chan ErrorMsg)
 

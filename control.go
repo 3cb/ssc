@@ -19,12 +19,12 @@ func (p *SocketPool) Control() {
 // ControlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) ControlRead() {
 	defer func() {
-		log.Printf("ControlRead goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ReadControl goroutine was stopped at %v.\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
 			select {
-			case <-p.Pipes.StopControlRead:
+			case <-p.Pipes.StopReadControl:
 				return
 			case v := <-p.Pipes.FromSocketJSON:
 				p.Pipes.OutboundJSON <- v
@@ -35,7 +35,7 @@ func (p *SocketPool) ControlRead() {
 	} else {
 		for {
 			select {
-			case <-p.Pipes.StopControlRead:
+			case <-p.Pipes.StopReadControl:
 				return
 			case v := <-p.Pipes.FromSocketBytes:
 				p.Pipes.OutboundBytes <- v
@@ -49,12 +49,12 @@ func (p *SocketPool) ControlRead() {
 // ControlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) ControlWrite() {
 	defer func() {
-		log.Printf("ControlWrite goroutine was stopped at %v.\n", time.Now())
+		log.Printf("WriteControl goroutine was stopped at %v.\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
 			select {
-			case <-p.Pipes.StopControlWrite:
+			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundJSON:
 				for _, socket := range p.OpenStack {
@@ -67,7 +67,7 @@ func (p *SocketPool) ControlWrite() {
 	} else {
 		for {
 			select {
-			case <-p.Pipes.StopControlWrite:
+			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundBytes:
 				for _, socket := range p.OpenStack {
@@ -83,11 +83,11 @@ func (p *SocketPool) ControlWrite() {
 // ControlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) ControlShutdown() {
 	defer func() {
-		log.Printf("ControlShutdown goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ShutdownControl goroutine was stopped at %v.\n", time.Now())
 	}()
 	for {
 		select {
-		case <-p.Pipes.StopControlShutdown:
+		case <-p.Pipes.StopShutdownControl:
 			return
 		case e := <-p.Pipes.ErrorRead:
 			s := p.checkOpenStack(e.URL)
