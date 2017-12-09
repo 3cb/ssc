@@ -107,7 +107,21 @@ func (p *SocketPool) AddSocket(url string) {
 // ShutdownSocket allows caller to send shutdown signal to goroutines managing reads and writes to websocket
 // Goroutines will close websocket connection and then return
 func (p *SocketPool) ShutdownSocket(url string) {
+	_, ok := p.ClosedStack[url]
+	if ok {
+		return
+	}
 
+	s := p.OpenStack[url]
+	closed, ok := p.ClosingQueue[url]
+	if ok && closed == "read" {
+		s.ShutdownWrite <- struct{}{}
+	} else if ok && closed == "write" {
+		s.ShutdownRead <- struct{}{}
+	} else {
+		s.ShutdownRead <- struct{}{}
+		s.ShutdownWrite <- struct{}{}
+	}
 }
 
 // RemoveSocket allows caller to remove an individual websocket connection from a SocketPool instance
@@ -118,28 +132,8 @@ func (p *SocketPool) RemoveSocket(url string) {
 		delete(p.ClosedStack, url)
 		log.Printf("Connection to websocket at %v has been closed and removed from Pool.  %v\n", url, time.Now())
 	}()
-	_, ok := p.ClosedStack[url]
-	if ok {
-		return
-	}
 
-	s := &Socket{}
-	closed, ok := p.ClosingQueue[url]
-	if ok && closed == "read" {
-		s = p.OpenStack[url]
-		if s != nil {
-			s.ShutdownWrite <- struct{}{}
-		}
-	} else if ok && closed == "write" {
-		s = p.OpenStack[url]
-		if s != nil {
-			s.ShutdownRead <- struct{}{}
-		}
-	} else {
-		s.ShutdownRead <- struct{}{}
-		s.ShutdownWrite <- struct{}{}
-	}
-
+	p.ShutdownSocket(url)
 	for {
 		_, ok := p.ClosedStack[url]
 		if ok {
