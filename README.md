@@ -21,9 +21,9 @@ go get "github.com/3cb/ssc"
 First create an instance of `ssc.SocketPool` by calling `ssc.NewSocketPool()` which takes a slice of url strings and a configuration object:
 ```
 sockets := []string{
-    wss://api.example.com/ws1,
-    wss://api.example.com/ws2,
-    wss://api.example.com/ws3,
+    "wss://api.example.com/ws1",
+    "wss://api.example.com/ws2",
+    "wss://api.example.com/ws3",
 }
 
 config := ssc.PoolConfig{
