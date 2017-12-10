@@ -4,8 +4,8 @@ package ssc
 // JSONReader reads from the websocket into a struct and sends to a channel
 // JSONWriter gets a value from a channel and writes to a websocket
 type JSONReaderWriter interface {
-	JSONRead(s *Socket, toPoolJSON chan<- JSONReaderWriter, errorChan chan<- ErrorMsg) error
-	JSONWrite(s *Socket, fromPoolJSON <-chan JSONReaderWriter, errorChan chan<- ErrorMsg) error
+	JSONRead(s *Socket, Socket2PoolJSON chan<- JSONReaderWriter) error
+	JSONWrite(s *Socket, Pool2SocketJSON <-chan JSONReaderWriter) error
 }
 
 // Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
