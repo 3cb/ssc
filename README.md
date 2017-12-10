@@ -43,31 +43,17 @@ The above example will create goroutines that read and write in bytes.  In order
 
 ```
 type JSONReaderWriter interface {
-	JSONRead(s *Socket, toPoolJSON chan<- JSONReaderWriter, errorChan chan<- ErrorMsg) error
-	JSONWrite(s *Socket, fromPoolJSON <-chan JSONReaderWriter, errorChan chan<- ErrorMsg) error
+	JSONRead(s *Socket, Socket2PoolJSON chan<- JSONReaderWriter) error
+	JSONWrite(s *Socket, Pool2SocketJSON <-chan JSONReaderWriter) error
 }
 ```
 
-An example of this can be seen in the "go_stream" branch here: https://github.com/3cb/gemini_clone/tree/go_stream
+An example of this can be seen in the "go_stream" branch here: https://github.com/3cb/gemini_clone/blob/go_stream/types/types.go
 
 ## Work Left To Do
 
--> ssc.ShutdownSocket() method will close websocket connection but will leave it in the pool and merely move from OpenStack to ClosedStack
-
--> Replace infinite for loop with Removal channel functionality -- RemoveSocket()???
-
 -> Make closing websocket conditional in deferred funcs for read/write groutines
 
--> Add option to create empty SocketPool
-
--> Make read/write methods for sockets unexportable
-
--> Make Control methods unexportable
-
 -> Remove checkOpenStack() (value, ok := p.OpenStack[url])
-
--> Make websocket connection initialization concurrent -- add mtx to prevent data race
-
--> Add auto reconnect feature -- requires sync.Mutex field in SocketPool type to prevent data race
 
 -> TESTS!
