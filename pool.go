@@ -20,17 +20,26 @@ type SocketPool struct {
 // Pipes contains data communication channels:
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	InboundBytes        chan Data
-	InboundJSON         chan JSONReaderWriter
-	OutboundBytes       chan Data
-	OutboundJSON        chan JSONReaderWriter
-	FromSocketBytes     chan Data
-	FromSocketJSON      chan JSONReaderWriter
+	// Inbound channels carry messages from caller application to WriteControl() method
+	InboundBytes chan Data
+	InboundJSON  chan JSONReaderWriter
+
+	// Outbound channels carry messages from ReadControl() method to caller application
+	OutboundBytes chan Data
+	OutboundJSON  chan JSONReaderWriter
+
+	// FromSocket channels carry messages from Read goroutines to ReadControl() method
+	FromSocketBytes chan Data
+	FromSocketJSON  chan JSONReaderWriter
+
+	// Stop channels are used to shutdown control goroutines
 	StopReadControl     chan struct{}
 	StopWriteControl    chan struct{}
 	StopShutdownControl chan struct{}
-	ErrorRead           chan ErrorMsg
-	ErrorWrite          chan ErrorMsg
+
+	// Error channels carry messages from read/write goroutines to ControlShutdown() goroutine
+	ErrorRead  chan ErrorMsg
+	ErrorWrite chan ErrorMsg
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
@@ -42,12 +51,13 @@ type PoolConfig struct {
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
+// If slice of urls is nil or empty SocketPool will be created and control methods will be launched and waiting
 func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
-	if config.IsReadable == false && config.IsWritable == false {
+	if !config.IsReadable && !config.IsWritable {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
-	if config.IsJSON == true && config.DataJSON == nil {
+	if config.IsJSON && config.DataJSON == nil {
 		err := errors.New("if data type is JSON you must pass in values for DataJSON and JSON channels that implement JSONReaderWriter interface")
 		return nil, err
 	}
@@ -75,15 +85,17 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		Config:       config,
 	}
 
-	for _, v := range urls {
-		s := newSocketInstance(v, config)
-		success, err := s.connect(pipes, config)
-		if success == true {
-			pool.OpenStack[v] = s
-			log.Printf("Connected to websocket(%v)\nAdded to Open Stack", s.URL)
-		} else {
-			pool.ClosedStack[v] = s
-			log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", s.URL, err)
+	if len(urls) > 0 {
+		for _, v := range urls {
+			s := newSocketInstance(v, config)
+			success, err := s.connect(pipes, config)
+			if success == true {
+				pool.OpenStack[v] = s
+				log.Printf("Connected to websocket(%v)\nAdded to Open Stack", s.URL)
+			} else {
+				pool.ClosedStack[v] = s
+				log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", s.URL, err)
+			}
 		}
 	}
 
