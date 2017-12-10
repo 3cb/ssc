@@ -26,7 +26,7 @@ func (p *SocketPool) ControlRead() {
 			select {
 			case <-p.Pipes.StopReadControl:
 				return
-			case v := <-p.Pipes.FromSocketJSON:
+			case v := <-p.Pipes.Socket2PoolJSON:
 				p.Pipes.OutboundJSON <- v
 			default:
 				continue
@@ -37,7 +37,7 @@ func (p *SocketPool) ControlRead() {
 			select {
 			case <-p.Pipes.StopReadControl:
 				return
-			case v := <-p.Pipes.FromSocketBytes:
+			case v := <-p.Pipes.Socket2PoolBytes:
 				p.Pipes.OutboundBytes <- v
 			default:
 				continue
@@ -58,7 +58,7 @@ func (p *SocketPool) ControlWrite() {
 				return
 			case v := <-p.Pipes.InboundJSON:
 				for _, socket := range p.OpenStack {
-					socket.FromPoolJSON <- v
+					socket.Pool2SocketJSON <- v
 				}
 			default:
 				continue
@@ -71,7 +71,7 @@ func (p *SocketPool) ControlWrite() {
 				return
 			case v := <-p.Pipes.InboundBytes:
 				for _, socket := range p.OpenStack {
-					socket.FromPoolBytes <- v
+					socket.Pool2SocketBytes <- v
 				}
 			default:
 				continue

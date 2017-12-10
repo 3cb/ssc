@@ -9,18 +9,18 @@ import (
 
 // Socket type defines a websocket connection along with configuration and channels used to run read and write goroutines
 type Socket struct {
-	Connection    *websocket.Conn
-	URL           string
-	IsConnected   bool
-	IsReadable    bool
-	IsWritable    bool
-	IsJSON        bool
-	FromPoolBytes chan Data
-	FromPoolJSON  chan JSONReaderWriter
-	ShutdownRead  chan struct{}
-	ShutdownWrite chan struct{}
-	OpenedAt      time.Time
-	ClosedAt      time.Time
+	Connection       *websocket.Conn
+	URL              string
+	IsConnected      bool
+	IsReadable       bool
+	IsWritable       bool
+	IsJSON           bool
+	Pool2SocketBytes chan Data
+	Pool2SocketJSON  chan JSONReaderWriter
+	ShutdownRead     chan struct{}
+	ShutdownWrite    chan struct{}
+	OpenedAt         time.Time
+	ClosedAt         time.Time
 }
 
 func newSocketInstance(url string, config PoolConfig) *Socket {
@@ -34,14 +34,14 @@ func newSocketInstance(url string, config PoolConfig) *Socket {
 	}
 
 	s := &Socket{
-		URL:           url,
-		IsReadable:    config.IsReadable,
-		IsWritable:    config.IsWritable,
-		IsJSON:        config.IsJSON,
-		FromPoolBytes: chBytes,
-		FromPoolJSON:  chJSON,
-		ShutdownRead:  make(chan struct{}),
-		ShutdownWrite: make(chan struct{}),
+		URL:              url,
+		IsReadable:       config.IsReadable,
+		IsWritable:       config.IsWritable,
+		IsJSON:           config.IsJSON,
+		Pool2SocketBytes: chBytes,
+		Pool2SocketJSON:  chJSON,
+		ShutdownRead:     make(chan struct{}),
+		ShutdownWrite:    make(chan struct{}),
 	}
 	return s
 }
@@ -97,7 +97,7 @@ func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 				pipes.ErrorRead <- ErrorMsg{s.URL, err}
 				return
 			}
-			pipes.FromSocketBytes <- Data{s.URL, readType, msg}
+			pipes.Socket2PoolBytes <- Data{s.URL, readType, msg}
 		}
 	}
 }
@@ -120,7 +120,7 @@ func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
 			return
 		default:
-			err := data.JSONRead(s, pipes.FromSocketJSON, pipes.ErrorRead)
+			err := data.JSONRead(s, pipes.Socket2PoolJSON, pipes.ErrorRead)
 			if err != nil {
 				log.Printf("Error reading message from websocket(%v): %v\n", s.URL, err)
 				pipes.ErrorRead <- ErrorMsg{s.URL, err}
@@ -145,7 +145,7 @@ func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
 			return
 		default:
-			msg := <-s.FromPoolBytes
+			msg := <-s.Pool2SocketBytes
 			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
 				log.Printf("Error writing to websocket(%v): %v\n", s.URL, err)
@@ -171,7 +171,7 @@ func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
 			return
 		default:
-			err := data.JSONWrite(s, s.FromPoolJSON, pipes.ErrorWrite)
+			err := data.JSONWrite(s, s.Pool2SocketJSON, pipes.ErrorWrite)
 			if err != nil {
 				log.Printf("Error writing to websocket(%v): %v\n", s.URL, err)
 				pipes.ErrorWrite <- ErrorMsg{s.URL, err}

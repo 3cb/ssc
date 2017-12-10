@@ -29,8 +29,8 @@ type Pipes struct {
 	OutboundJSON  chan JSONReaderWriter
 
 	// FromSocket channels carry messages from Read goroutines to ReadControl() method
-	FromSocketBytes chan Data
-	FromSocketJSON  chan JSONReaderWriter
+	Socket2PoolBytes chan Data
+	Socket2PoolJSON  chan JSONReaderWriter
 
 	// Stop channels are used to shutdown control goroutines
 	StopReadControl     chan struct{}
@@ -65,11 +65,11 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	if config.IsJSON == true {
 		pipes.InboundJSON = make(chan JSONReaderWriter)
 		pipes.OutboundJSON = make(chan JSONReaderWriter)
-		pipes.FromSocketJSON = make(chan JSONReaderWriter)
+		pipes.Socket2PoolJSON = make(chan JSONReaderWriter)
 	} else {
 		pipes.InboundBytes = make(chan Data)
 		pipes.OutboundBytes = make(chan Data)
-		pipes.FromSocketBytes = make(chan Data)
+		pipes.Socket2PoolBytes = make(chan Data)
 	}
 	pipes.StopReadControl = make(chan struct{})
 	pipes.StopWriteControl = make(chan struct{})
