@@ -60,17 +60,17 @@ func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 	switch s.IsJSON {
 	case true:
 		if s.IsReadable == true {
-			go s.ReadSocketJSON(pipes, config.DataJSON)
+			go s.readSocketJSON(pipes, config.DataJSON)
 		}
 		if s.IsWritable == true {
-			go s.WriteSocketJSON(pipes, config.DataJSON)
+			go s.writeSocketJSON(pipes, config.DataJSON)
 		}
 	case false:
 		if s.IsReadable {
-			go s.ReadSocketBytes(pipes)
+			go s.readSocketBytes(pipes)
 		}
 		if s.IsWritable {
-			go s.WriteSocketBytes(pipes)
+			go s.writeSocketBytes(pipes)
 		}
 	}
 	return true, nil
@@ -78,7 +78,7 @@ func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 
 // ReadSocketBytes runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-func (s *Socket) ReadSocketBytes(pipes *Pipes) {
+func (s *Socket) readSocketBytes(pipes *Pipes) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
@@ -106,7 +106,7 @@ func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
 // Parameter v represents the data structure caller wants ReadJSON() methods to parse message data into
 // pipes conatains a channel with v's type, passed in by caller
-func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
+func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
@@ -132,7 +132,7 @@ func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 
 // WriteSocketBytes runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
-func (s *Socket) WriteSocketBytes(pipes *Pipes) {
+func (s *Socket) writeSocketBytes(pipes *Pipes) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
@@ -158,7 +158,7 @@ func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 
 // WriteSocketJSON runs a continuous loop that reads values sent from the SocketPool controller and writes them to the websocket.
 // It listens for shutdown command from the controller and will close websocket connection on any such command as well as on any error writing to the websocket
-func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
+func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
