@@ -19,7 +19,7 @@ func (p *SocketPool) Control() {
 // ControlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) ControlRead() {
 	defer func() {
-		log.Printf("ReadControl goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlRead goroutine was stopped at %v.\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
@@ -49,7 +49,7 @@ func (p *SocketPool) ControlRead() {
 // ControlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) ControlWrite() {
 	defer func() {
-		log.Printf("WriteControl goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlWrite goroutine was stopped at %v.\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
@@ -83,7 +83,7 @@ func (p *SocketPool) ControlWrite() {
 // ControlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) ControlShutdown() {
 	defer func() {
-		log.Printf("ShutdownControl goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlShutdown goroutine was stopped at %v.\n", time.Now())
 	}()
 	for {
 		select {
