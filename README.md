@@ -48,7 +48,13 @@ type JSONReaderWriter interface {
 }
 ```
 
-An example of this can be seen in the "go_stream" branch here: https://github.com/3cb/gemini_clone/blob/go_stream/types/types.go
+An example of this can be seen in the "go_stream" branch.
+
+Data type with methods that implement JSONReaderWriter interface:
+https://github.com/3cb/gemini_clone/blob/go_stream/types/types.go
+
+Config object with zero value instance of Data type in config object:
+https://github.com/3cb/gemini_clone/blob/go_stream/handlers/handlers.go
 
 ## Work Left To Do
 
