@@ -87,6 +87,8 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		}
 	}
 
+	go pool.Control()
+
 	return pool, nil
 }
 
