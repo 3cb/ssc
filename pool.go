@@ -78,9 +78,9 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 	pipes.ErrorWrite = make(chan ErrorMsg)
 
 	pool := &SocketPool{
-		OpenStack:    make(map[string]*Socket, len(urls)),
-		ClosedStack:  make(map[string]*Socket, len(urls)),
-		ClosingQueue: make(map[string]string, len(urls)),
+		OpenStack:    make(map[string]*Socket),
+		ClosedStack:  make(map[string]*Socket),
+		ClosingQueue: make(map[string]string),
 		Pipes:        pipes,
 		Config:       config,
 	}
