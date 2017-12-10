@@ -120,7 +120,7 @@ func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
 			return
 		default:
-			err := data.JSONRead(s, pipes.Socket2PoolJSON, pipes.ErrorRead)
+			err := data.JSONRead(s, pipes.Socket2PoolJSON)
 			if err != nil {
 				log.Printf("Error reading message from websocket(%v): %v\n", s.URL, err)
 				pipes.ErrorRead <- ErrorMsg{s.URL, err}
@@ -171,7 +171,7 @@ func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
 			return
 		default:
-			err := data.JSONWrite(s, s.Pool2SocketJSON, pipes.ErrorWrite)
+			err := data.JSONWrite(s, s.Pool2SocketJSON)
 			if err != nil {
 				log.Printf("Error writing to websocket(%v): %v\n", s.URL, err)
 				pipes.ErrorWrite <- ErrorMsg{s.URL, err}
