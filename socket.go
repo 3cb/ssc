@@ -81,9 +81,7 @@ func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		if err != nil {
-		}
-		log.Printf("Closing (%v) at %v\n: %v", s.URL, time.Now(), err)
+		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
@@ -111,9 +109,7 @@ func (s *Socket) ReadSocketBytes(pipes *Pipes) {
 func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		if err != nil {
-		}
-		log.Printf("Closing (%v) at %v\n", s.URL, time.Now())
+		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 
@@ -139,9 +135,7 @@ func (s *Socket) ReadSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		if err != nil {
-		}
-		log.Printf("Closing (%v) at %v\n: %v", s.URL, time.Now(), err)
+		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
@@ -167,9 +161,7 @@ func (s *Socket) WriteSocketBytes(pipes *Pipes) {
 func (s *Socket) WriteSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		if err != nil {
-		}
-		log.Printf("Closing (%v) at %v\n: %v", s.URL, time.Now(), err)
+		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
