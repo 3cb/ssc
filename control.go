@@ -101,13 +101,13 @@ func (p *SocketPool) ControlShutdown() {
 					} else {
 						s.ClosedAt = time.Now()
 						delete(p.OpenStack, e.URL)
-						p.ClosedStack[e.URL] = s
+						p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
 					}
 				} else if ok == true && rw == "write" {
 					delete(p.ClosingQueue, e.URL)
 					s.ClosedAt = time.Now()
 					delete(p.OpenStack, e.URL)
-					p.ClosedStack[e.URL] = s
+					p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
 				}
 			}
 		case e := <-p.Pipes.ErrorWrite:
@@ -122,13 +122,13 @@ func (p *SocketPool) ControlShutdown() {
 					} else {
 						s.ClosedAt = time.Now()
 						delete(p.OpenStack, e.URL)
-						p.ClosedStack[e.URL] = s
+						p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
 					}
 				} else if ok == true && rw == "read" {
 					delete(p.ClosingQueue, e.URL)
 					s.ClosedAt = time.Now()
 					delete(p.OpenStack, e.URL)
-					p.ClosedStack[e.URL] = s
+					p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
 				}
 			}
 		default:
