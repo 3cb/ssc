@@ -85,6 +85,8 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 		Config:       config,
 	}
 
+	go pool.Control()
+
 	if len(urls) > 0 {
 		for _, v := range urls {
 			s := newSocketInstance(v, config)
@@ -98,8 +100,6 @@ func NewSocketPool(urls []string, config PoolConfig) (*SocketPool, error) {
 			}
 		}
 	}
-
-	go pool.Control()
 
 	return pool, nil
 }
