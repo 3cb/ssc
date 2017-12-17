@@ -8,9 +8,8 @@ type JSONReaderWriter interface {
 	JSONWrite(s *Socket, Pool2SocketJSON <-chan JSONReaderWriter) error
 }
 
-// Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
+// Data wraps message type and []bytetogether so sender/receiver can identify the target/source respectively
 type Data struct {
-	URL     string
 	Type    int
 	Payload []byte
 }

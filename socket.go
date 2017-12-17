@@ -97,7 +97,7 @@ func (s *Socket) readSocketBytes(pipes *Pipes) {
 				pipes.ErrorRead <- ErrorMsg{s.URL, err}
 				return
 			}
-			pipes.Socket2PoolBytes <- Data{s.URL, readType, msg}
+			pipes.Socket2PoolBytes <- Data{readType, msg}
 		}
 	}
 }
