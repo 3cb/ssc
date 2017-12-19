@@ -1,7 +1,6 @@
 package ssc
 
 import (
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -48,7 +47,7 @@ func newSocketInstance(url string, config PoolConfig) *Socket {
 
 // Connect connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
-func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
+func (s *Socket) connect(pool *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
@@ -60,17 +59,29 @@ func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 	switch s.IsJSON {
 	case true:
 		if s.IsReadable == true {
-			go s.readSocketJSON(pipes, config.DataJSON)
+			go s.readSocketJSON(pool.Pipes, pool.Config.DataJSON)
+			pool.ReadStack[s] = true
+		} else {
+			pool.ReadStack[s] = false
 		}
 		if s.IsWritable == true {
-			go s.writeSocketJSON(pipes, config.DataJSON)
+			go s.writeSocketJSON(pool.Pipes, pool.Config.DataJSON)
+			pool.WriteStack[s] = true
+		} else {
+			pool.WriteStack[s] = false
 		}
 	case false:
 		if s.IsReadable {
-			go s.readSocketBytes(pipes)
+			go s.readSocketBytes(pool.Pipes)
+			pool.ReadStack[s] = true
+		} else {
+			pool.ReadStack[s] = false
 		}
 		if s.IsWritable {
-			go s.writeSocketBytes(pipes)
+			go s.writeSocketBytes(pool.Pipes)
+			pool.WriteStack[s] = true
+		} else {
+			pool.WriteStack[s] = false
 		}
 	}
 	return true, nil
@@ -80,24 +91,21 @@ func (s *Socket) connect(pipes *Pipes, config PoolConfig) (bool, error) {
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
 func (s *Socket) readSocketBytes(pipes *Pipes) {
 	defer func() {
-		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
+		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
 	}()
 	for {
 		select {
 		case <-s.ShutdownRead:
-			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
-			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
+			pipes.ErrorRead <- ErrorMsg{s, nil}
 			return
 		default:
 			readType, msg, err := s.Connection.ReadMessage()
 			if err != nil {
-				log.Printf("Error reading from websocket(%v): %v\n", s.URL, err)
-				pipes.ErrorRead <- ErrorMsg{s.URL, err}
+				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			pipes.Socket2PoolBytes <- Data{s.URL, readType, msg}
+			pipes.Socket2PoolBytes <- Data{Type: readType, Payload: msg}
 		}
 	}
 }
@@ -108,22 +116,19 @@ func (s *Socket) readSocketBytes(pipes *Pipes) {
 // pipes conatains a channel with v's type, passed in by caller
 func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
-		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
+		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
 	}()
 
 	for {
 		select {
 		case <-s.ShutdownRead:
-			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
-			pipes.ErrorRead <- ErrorMsg{s.URL, nil}
+			pipes.ErrorRead <- ErrorMsg{s, nil}
 			return
 		default:
 			err := data.JSONRead(s, pipes.Socket2PoolJSON)
 			if err != nil {
-				log.Printf("Error reading message from websocket(%v): %v\n", s.URL, err)
-				pipes.ErrorRead <- ErrorMsg{s.URL, err}
+				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
 		}
@@ -134,22 +139,20 @@ func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
 func (s *Socket) writeSocketBytes(pipes *Pipes) {
 	defer func() {
-		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
+		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		// log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
 		select {
 		case <-s.ShutdownWrite:
-			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
-			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
+			pipes.ErrorWrite <- ErrorMsg{s, nil}
 			return
 		default:
 			msg := <-s.Pool2SocketBytes
 			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
-				log.Printf("Error writing to websocket(%v): %v\n", s.URL, err)
-				pipes.ErrorWrite <- ErrorMsg{s.URL, err}
+				pipes.ErrorWrite <- ErrorMsg{s, err}
 				return
 			}
 		}
@@ -160,21 +163,19 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 // It listens for shutdown command from the controller and will close websocket connection on any such command as well as on any error writing to the websocket
 func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
-		err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
+		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		// log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
 		select {
 		case <-s.ShutdownWrite:
-			log.Printf("Shutdown message received from controller(%v).\n", s.URL)
-			pipes.ErrorWrite <- ErrorMsg{s.URL, nil}
+			pipes.ErrorWrite <- ErrorMsg{s, nil}
 			return
 		default:
 			err := data.JSONWrite(s, s.Pool2SocketJSON)
 			if err != nil {
-				log.Printf("Error writing to websocket(%v): %v\n", s.URL, err)
-				pipes.ErrorWrite <- ErrorMsg{s.URL, err}
+				pipes.ErrorWrite <- ErrorMsg{s, err}
 				return
 			}
 		}

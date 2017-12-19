@@ -19,7 +19,7 @@ func (p *SocketPool) Control() {
 // ControlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) ControlRead() {
 	defer func() {
-		log.Printf("ControlRead goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlRead goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
@@ -49,7 +49,7 @@ func (p *SocketPool) ControlRead() {
 // ControlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) ControlWrite() {
 	defer func() {
-		log.Printf("ControlWrite goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlWrite goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	if p.Config.IsJSON {
 		for {
@@ -57,8 +57,10 @@ func (p *SocketPool) ControlWrite() {
 			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundJSON:
-				for _, socket := range p.OpenStack {
-					socket.Pool2SocketJSON <- v
+				for socket, open := range p.WriteStack {
+					if open {
+						socket.Pool2SocketJSON <- v
+					}
 				}
 			default:
 				continue
@@ -70,8 +72,10 @@ func (p *SocketPool) ControlWrite() {
 			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundBytes:
-				for _, socket := range p.OpenStack {
-					socket.Pool2SocketBytes <- v
+				for socket, open := range p.WriteStack {
+					if open {
+						socket.Pool2SocketBytes <- v
+					}
 				}
 			default:
 				continue
@@ -83,53 +87,59 @@ func (p *SocketPool) ControlWrite() {
 // ControlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) ControlShutdown() {
 	defer func() {
-		log.Printf("ControlShutdown goroutine was stopped at %v.\n", time.Now())
+		log.Printf("ControlShutdown goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	for {
 		select {
 		case <-p.Pipes.StopShutdownControl:
 			return
 		case e := <-p.Pipes.ErrorRead:
-			s := p.checkOpenStack(e.URL)
-			if s != nil {
-				rw, ok := p.ClosingQueue[e.URL]
-				if ok == false {
-					if s.IsWritable == true {
-						p.ClosingQueue[e.URL] = "read"
-						sock := p.OpenStack[e.URL]
-						sock.ShutdownWrite <- struct{}{}
-					} else {
-						s.ClosedAt = time.Now()
-						delete(p.OpenStack, e.URL)
-						p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
-					}
-				} else if ok == true && rw == "write" {
-					delete(p.ClosingQueue, e.URL)
-					s.ClosedAt = time.Now()
-					delete(p.OpenStack, e.URL)
-					p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
+			s := e.Socket
+			switch {
+			case p.ReadStack[s] && p.WriteStack[s]:
+				p.ReadStack[s] = false
+				s.ShutdownWrite <- struct{}{}
+			case p.ReadStack[s] && !p.WriteStack[s]:
+				p.ReadStack[s] = false
+				if len(s.URL) > 0 {
+					p.ClosedURLs[s.URL] = true
 				}
+				s.ClosedAt = time.Now()
+				delete(p.ReadStack, s)
+				delete(p.WriteStack, s)
+			case !p.ReadStack[s] && p.WriteStack[s]:
+				s.ShutdownWrite <- struct{}{}
+			case !p.ReadStack[s] && !p.WriteStack[s]:
+				if len(s.URL) > 0 {
+					p.ClosedURLs[s.URL] = true
+				}
+				s.ClosedAt = time.Now()
+				delete(p.ReadStack, s)
+				delete(p.WriteStack, s)
 			}
 		case e := <-p.Pipes.ErrorWrite:
-			s := p.checkOpenStack(e.URL)
-			if s != nil {
-				rw, ok := p.ClosingQueue[e.URL]
-				if ok == false {
-					if s.IsReadable == true {
-						p.ClosingQueue[e.URL] = "write"
-						sock := p.OpenStack[e.URL]
-						sock.ShutdownRead <- struct{}{}
-					} else {
-						s.ClosedAt = time.Now()
-						delete(p.OpenStack, e.URL)
-						p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
-					}
-				} else if ok == true && rw == "read" {
-					delete(p.ClosingQueue, e.URL)
-					s.ClosedAt = time.Now()
-					delete(p.OpenStack, e.URL)
-					p.ClosedStack[e.URL] = newSocketInstance(e.URL, p.Config)
+			s := e.Socket
+			switch {
+			case p.ReadStack[s] && p.WriteStack[s]:
+				p.WriteStack[s] = false
+				s.ShutdownRead <- struct{}{}
+			case p.ReadStack[s] && !p.WriteStack[s]:
+				s.ShutdownRead <- struct{}{}
+			case !p.ReadStack[s] && p.WriteStack[s]:
+				p.WriteStack[s] = false
+				if len(s.URL) > 0 {
+					p.ClosedURLs[s.URL] = true
 				}
+				s.ClosedAt = time.Now()
+				delete(p.ReadStack, s)
+				delete(p.WriteStack, s)
+			case !p.ReadStack[s] && !p.WriteStack[s]:
+				if len(s.URL) > 0 {
+					p.ClosedURLs[s.URL] = true
+				}
+				s.ClosedAt = time.Now()
+				delete(p.ReadStack, s)
+				delete(p.WriteStack, s)
 			}
 		default:
 			continue

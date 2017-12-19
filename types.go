@@ -10,13 +10,12 @@ type JSONReaderWriter interface {
 
 // Data wraps message type, []byte, and URL together so sender/receiver can identify the target/source respectively
 type Data struct {
-	URL     string
 	Type    int
 	Payload []byte
 }
 
 // ErrorMsg wraps an error message with Socket instance so receiver can try reconnect and/or log error
 type ErrorMsg struct {
-	URL   string
-	Error error
+	Socket *Socket
+	Error  error
 }
