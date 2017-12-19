@@ -22,7 +22,8 @@ type Socket struct {
 	ClosedAt         time.Time
 }
 
-func newSocketInstance(url string, config PoolConfig) *Socket {
+// NewSocketInstance returns a new instance of a Socket
+func NewSocketInstance(url string, config PoolConfig) *Socket {
 	var chBytes chan Data
 	var chJSON chan JSONReaderWriter
 
