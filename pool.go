@@ -90,7 +90,7 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 	if len(config.ServerURLs) > 0 {
 		for _, url := range config.ServerURLs {
 			s := NewSocketInstance(url, config)
-			success, err := s.connect(pool)
+			success, err := s.connectServer(pool)
 			if success {
 				log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
 			} else {
@@ -106,7 +106,7 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddServerSocket(url string) {
 	s := NewSocketInstance(url, p.Config)
-	success, err := s.connect(p)
+	success, err := s.connectServer(p)
 	switch success {
 	case true:
 		if len(url) > 0 {

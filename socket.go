@@ -48,7 +48,7 @@ func NewSocketInstance(url string, config PoolConfig) *Socket {
 
 // Connect connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
-func (s *Socket) connect(pool *SocketPool) (bool, error) {
+func (s *Socket) connectServer(pool *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
@@ -145,6 +145,7 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 		s.Connection.Close()
 	}()
 	for {
+		println("listening on write goroutine")
 		select {
 		case <-s.ShutdownWrite:
 			pipes.ErrorWrite <- ErrorMsg{s, nil}
