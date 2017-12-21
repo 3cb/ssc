@@ -1,6 +1,7 @@
 package ssc
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,7 +24,7 @@ type Socket struct {
 }
 
 // NewSocketInstance returns a new instance of a Socket
-func NewSocketInstance(url string, config PoolConfig) *Socket {
+func newSocketInstance(url string, config PoolConfig) *Socket {
 	var chBytes chan Data
 	var chJSON chan JSONReaderWriter
 
@@ -46,7 +47,48 @@ func NewSocketInstance(url string, config PoolConfig) *Socket {
 	return s
 }
 
-// Connect connects to websocket given a url string and config struct from SocketPool.
+// ConnectClient connects to a websocket using websocket.Upgrade() method and starts goroutine/s for read and/or write
+func (s *Socket) connectClient(pool *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return false, err
+	}
+	s.Connection = c
+	s.IsConnected = true
+	s.OpenedAt = time.Now()
+
+	switch s.IsJSON {
+	case true:
+		if s.IsReadable == true {
+			go s.readSocketJSON(pool.Pipes, pool.Config.DataJSON)
+			pool.ReadStack[s] = true
+		} else {
+			pool.ReadStack[s] = false
+		}
+		if s.IsWritable == true {
+			go s.writeSocketJSON(pool.Pipes, pool.Config.DataJSON)
+			pool.WriteStack[s] = true
+		} else {
+			pool.WriteStack[s] = false
+		}
+	case false:
+		if s.IsReadable {
+			go s.readSocketBytes(pool.Pipes)
+			pool.ReadStack[s] = true
+		} else {
+			pool.ReadStack[s] = false
+		}
+		if s.IsWritable {
+			go s.writeSocketBytes(pool.Pipes)
+			pool.WriteStack[s] = true
+		} else {
+			pool.WriteStack[s] = false
+		}
+	}
+	return true, nil
+}
+
+// ConnectServer connects to websocket given a url string and config struct from SocketPool.
 // Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
 func (s *Socket) connectServer(pool *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
@@ -145,7 +187,6 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 		s.Connection.Close()
 	}()
 	for {
-		println("listening on write goroutine")
 		select {
 		case <-s.ShutdownWrite:
 			pipes.ErrorWrite <- ErrorMsg{s, nil}
