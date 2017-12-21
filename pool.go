@@ -3,6 +3,9 @@ package ssc
 import (
 	"errors"
 	"log"
+	"net/http"
+
+	"github.com/gorilla/websocket"
 )
 
 // SocketPool is a collection of websocket connections combined with
@@ -89,7 +92,7 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 
 	if len(config.ServerURLs) > 0 {
 		for _, url := range config.ServerURLs {
-			s := NewSocketInstance(url, config)
+			s := newSocketInstance(url, config)
 			success, err := s.connectServer(pool)
 			if success {
 				log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
@@ -102,22 +105,25 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 	return pool, nil
 }
 
+// AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
+func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
+	s := newSocketInstance("", p.Config)
+	success, err := s.connectClient(p, upgrader, w, r)
+	if success {
+		return s, nil
+	}
+	return s, err
+}
+
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddServerSocket(url string) {
-	s := NewSocketInstance(url, p.Config)
+	s := newSocketInstance(url, p.Config)
 	success, err := s.connectServer(p)
-	switch success {
-	case true:
-		if len(url) > 0 {
-			log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
-		} else {
-			log.Printf("New client connected vie websocket.\n")
-		}
-	case false:
-		if len(url) > 0 {
-			log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", url, err)
-		}
+	if success {
+		log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
+	} else {
+		log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", url, err)
 	}
 }
 
