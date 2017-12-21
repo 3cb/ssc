@@ -21,6 +21,7 @@ func (p *SocketPool) ControlRead() {
 	defer func() {
 		log.Printf("ControlRead goroutine was stopped at %v.\n\n", time.Now())
 	}()
+	log.Printf("ControlRead started.")
 	if p.Config.IsJSON {
 		for {
 			select {
@@ -51,6 +52,7 @@ func (p *SocketPool) ControlWrite() {
 	defer func() {
 		log.Printf("ControlWrite goroutine was stopped at %v.\n\n", time.Now())
 	}()
+	log.Printf("ControlWrite started.")
 	if p.Config.IsJSON {
 		for {
 			select {
@@ -89,6 +91,7 @@ func (p *SocketPool) ControlShutdown() {
 	defer func() {
 		log.Printf("ControlShutdown goroutine was stopped at %v.\n\n", time.Now())
 	}()
+	log.Printf("ControlShutdown started.")
 	for {
 		select {
 		case <-p.Pipes.StopShutdownControl:
