@@ -58,8 +58,10 @@ https://github.com/3cb/gemini_clone/blob/go_stream/handlers/handlers.go
 
 ## Work Left To Do
 
--> Make closing websocket conditional in deferred funcs for read/write groutines
+-> Rewrite Shutdown and Remove methods for SocketPool
 
--> Remove checkOpenStack() (value, ok := p.OpenStack[url])
+-> Update this README!
+
+-> Make closing websocket conditional in deferred funcs for read/write groutines
 
 -> TESTS!
