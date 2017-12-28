@@ -58,6 +58,10 @@ https://github.com/3cb/gemini_clone/blob/go_stream/handlers/handlers.go
 
 ## Work Left To Do
 
+-> Update comments
+
+-> Revisit JSONReaderWriter interface
+
 -> Add Ping/Pong functionality
 
 -> Rewrite Shutdown and Remove methods for SocketPool
