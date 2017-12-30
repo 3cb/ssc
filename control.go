@@ -29,8 +29,6 @@ func (p *SocketPool) ControlRead() {
 				return
 			case v := <-p.Pipes.Socket2PoolJSON:
 				p.Pipes.OutboundJSON <- v
-			default:
-				continue
 			}
 		}
 	} else {
@@ -40,8 +38,6 @@ func (p *SocketPool) ControlRead() {
 				return
 			case v := <-p.Pipes.Socket2PoolBytes:
 				p.Pipes.OutboundBytes <- v
-			default:
-				continue
 			}
 		}
 	}
@@ -64,8 +60,6 @@ func (p *SocketPool) ControlWrite() {
 						socket.Pool2SocketJSON <- v
 					}
 				}
-			default:
-				continue
 			}
 		}
 	} else {
@@ -79,8 +73,6 @@ func (p *SocketPool) ControlWrite() {
 						socket.Pool2SocketBytes <- v
 					}
 				}
-			default:
-				continue
 			}
 		}
 	}
@@ -144,8 +136,6 @@ func (p *SocketPool) ControlShutdown() {
 				delete(p.ReadStack, s)
 				delete(p.WriteStack, s)
 			}
-		default:
-			continue
 		}
 	}
 }

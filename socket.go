@@ -191,8 +191,7 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 		case <-s.ShutdownWrite:
 			pipes.ErrorWrite <- ErrorMsg{s, nil}
 			return
-		default:
-			msg := <-s.Pool2SocketBytes
+		case msg := <-s.Pool2SocketBytes:
 			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
 				pipes.ErrorWrite <- ErrorMsg{s, err}
