@@ -95,9 +95,9 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 			s := newSocketInstance(url, config)
 			success, err := s.connectServer(pool)
 			if success {
-				log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
+				log.Printf("Connected to websocket(%v)\n", url)
 			} else {
-				log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", url, err)
+				log.Printf("Error connecting to websocket(%v): %v\n", url, err)
 			}
 		}
 	}
@@ -121,9 +121,9 @@ func (p *SocketPool) AddServerSocket(url string) {
 	s := newSocketInstance(url, p.Config)
 	success, err := s.connectServer(p)
 	if success {
-		log.Printf("Connected to websocket(%v)\nAdded to Open Stack", url)
+		log.Printf("Connected to websocket(%v)\n", url)
 	} else {
-		log.Printf("Error connecting to websocket(%v): %v\nAdded to Closed Stack", url, err)
+		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
 	}
 }
 
