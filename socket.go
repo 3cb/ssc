@@ -183,7 +183,6 @@ func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 func (s *Socket) writeSocketBytes(pipes *Pipes) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		// log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
@@ -206,7 +205,6 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		// log.Printf("Closing (%v) at %v\nError: %v", s.URL, time.Now(), err)
 		s.Connection.Close()
 	}()
 	for {
