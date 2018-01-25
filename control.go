@@ -14,6 +14,10 @@ func (p *SocketPool) Control() {
 	if p.Config.IsWritable {
 		go p.ControlWrite()
 	}
+	if p.Config.IsReadable && p.Config.IsWritable {
+		go p.ControlPing(p.Config.PingInterval)
+		go p.ControlPong()
+	}
 }
 
 // ControlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
@@ -138,4 +142,44 @@ func (p *SocketPool) ControlShutdown() {
 			}
 		}
 	}
+}
+
+// ControlPing runs an infinite loop to send pings messages to websocket write goroutine at interval t
+func (p *SocketPool) ControlPing(t time.Duration) {
+	defer func() {
+		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())
+	}()
+	log.Printf("ControlPing started.")
+	ticker := time.NewTicker(t)
+
+	for {
+		select {
+		case <-p.Pipes.StopPingControl:
+			return
+		case <-ticker.C:
+			for s, missed := range p.PingStack {
+				if missed < 2 {
+					p.PingStack[s]++
+					if p.Config.IsJSON {
+						s.Pool2SocketJSON <- Data{Type: 9}
+					} else {
+						s.Pool2SocketBytes <- Data{Type: 9}
+					}
+				} else {
+					delete(p.PingStack, s)
+					if s.IsReadable {
+						s.ShutdownRead <- struct{}{}
+					}
+					if s.IsWritable {
+						s.ShutdownWrite <- struct{}{}
+					}
+				}
+			}
+		}
+	}
+}
+
+// ControlPong runs an infinite loop to receive pong messages and register responses
+func (p *SocketPool) ControlPong() {
+
 }
