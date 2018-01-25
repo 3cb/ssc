@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -12,8 +14,10 @@ import (
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type SocketPool struct {
+	mtx        sync.Mutex
 	ReadStack  map[*Socket]bool
 	WriteStack map[*Socket]bool
+	PingStack  map[*Socket]int
 	ClosedURLs map[string]bool
 	Pipes      *Pipes
 	Config     PoolConfig
@@ -38,6 +42,8 @@ type Pipes struct {
 	StopReadControl     chan struct{}
 	StopWriteControl    chan struct{}
 	StopShutdownControl chan struct{}
+	StopPingControl     chan struct{}
+	StopPongControl     chan struct{}
 
 	// Error channels carry messages from read/write goroutines to ControlShutdown() goroutine
 	ErrorRead  chan ErrorMsg
@@ -46,11 +52,12 @@ type Pipes struct {
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
 type PoolConfig struct {
-	ServerURLs []string
-	IsReadable bool
-	IsWritable bool
-	IsJSON     bool // If false, messages will be read/written in bytes
-	DataJSON   JSONReaderWriter
+	ServerURLs   []string
+	IsReadable   bool
+	IsWritable   bool
+	IsJSON       bool // If false, messages will be read/written in bytes
+	DataJSON     JSONReaderWriter
+	PingInterval time.Duration //minimum of 30 seconds
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
