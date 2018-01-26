@@ -159,14 +159,18 @@ func (p *SocketPool) ControlPing(t time.Duration) {
 		case <-ticker.C:
 			for s, missed := range p.PingStack {
 				if missed < 2 {
+					p.mtx.Lock()
 					p.PingStack[s]++
+					p.mtx.Unlock()
 					if p.Config.IsJSON {
 						s.Pool2SocketJSON <- Message{Type: 9}
 					} else {
 						s.Pool2SocketBytes <- Message{Type: 9}
 					}
 				} else {
+					p.mtx.Lock()
 					delete(p.PingStack, s)
+					p.mtx.Unlock()
 					if s.IsReadable {
 						s.ShutdownRead <- struct{}{}
 					}
@@ -181,5 +185,19 @@ func (p *SocketPool) ControlPing(t time.Duration) {
 
 // ControlPong runs an infinite loop to receive pong messages and register responses
 func (p *SocketPool) ControlPong() {
+	defer func() {
+		log.Printf("ControlPong goroutine was stopped at %v.\n\n", time.Now())
+	}()
+	log.Printf("ControlPong started.")
 
+	for {
+		select {
+		case <-p.Pipes.StopPongControl:
+			return
+		case s := <-p.Pipes.Pong:
+			p.mtx.Lock()
+			p.PingStack[s]--
+			p.mtx.Unlock()
+		}
+	}
 }
