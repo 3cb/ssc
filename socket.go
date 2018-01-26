@@ -1,6 +1,7 @@
 package ssc
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -15,8 +16,8 @@ type Socket struct {
 	IsReadable       bool
 	IsWritable       bool
 	IsJSON           bool
-	Pool2SocketBytes chan Data
-	Pool2SocketJSON  chan JSONReaderWriter
+	Pool2SocketBytes chan Message
+	Pool2SocketJSON  chan JSONWriter
 	ShutdownRead     chan struct{}
 	ShutdownWrite    chan struct{}
 	OpenedAt         time.Time
@@ -25,13 +26,13 @@ type Socket struct {
 
 // NewSocketInstance returns a new instance of a Socket
 func newSocketInstance(url string, config PoolConfig) *Socket {
-	var chBytes chan Data
-	var chJSON chan JSONReaderWriter
+	var chBytes chan Message
+	var chJSON chan JSONWriter
 
 	if config.IsJSON == true {
-		chJSON = make(chan JSONReaderWriter)
+		chJSON = make(chan JSONWriter)
 	} else {
-		chBytes = make(chan Data)
+		chBytes = make(chan Message)
 	}
 
 	s := &Socket{
@@ -137,27 +138,30 @@ func (s *Socket) readSocketBytes(pipes *Pipes) {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
 	}()
+
 	for {
 		select {
 		case <-s.ShutdownRead:
 			pipes.ErrorRead <- ErrorMsg{s, nil}
 			return
 		default:
-			readType, msg, err := s.Connection.ReadMessage()
+			msgType, msg, err := s.Connection.ReadMessage()
 			if err != nil {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			pipes.Socket2PoolBytes <- Data{Type: readType, Payload: msg}
+			if msgType == 10 {
+				pipes.Pong <- s
+			} else {
+				pipes.Socket2PoolBytes <- Message{Type: msgType, Payload: msg}
+			}
 		}
 	}
 }
 
 // ReadSocketJSON runs a continuous loop that reads messages from websocket and sends the JSON encoded message to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-// Parameter v represents the data structure caller wants ReadJSON() methods to parse message data into
-// pipes conatains a channel with v's type, passed in by caller
-func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
+func (s *Socket) readSocketJSON(pipes *Pipes, data JSONWriter) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
@@ -169,10 +173,19 @@ func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorRead <- ErrorMsg{s, nil}
 			return
 		default:
-			err := data.JSONRead(s, pipes.Socket2PoolJSON)
+			msgType, msg, err := s.Connection.ReadMessage()
 			if err != nil {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
+			}
+			if msgType == 10 {
+				pipes.Pong <- s
+			} else {
+				err = json.Unmarshal(msg, &data)
+				if err != nil {
+					continue
+				}
+				pipes.Socket2PoolJSON <- data
 			}
 		}
 	}
@@ -202,18 +215,19 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 
 // WriteSocketJSON runs a continuous loop that reads values sent from the SocketPool controller and writes them to the websocket.
 // It listens for shutdown command from the controller and will close websocket connection on any such command as well as on any error writing to the websocket
-func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONReaderWriter) {
+func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONWriter) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
 	}()
+
 	for {
 		select {
 		case <-s.ShutdownWrite:
 			pipes.ErrorWrite <- ErrorMsg{s, nil}
 			return
-		default:
-			err := data.JSONWrite(s, s.Pool2SocketJSON)
+		case msg := <-s.Pool2SocketJSON:
+			err := msg.WriteJSON(s)
 			if err != nil {
 				pipes.ErrorWrite <- ErrorMsg{s, err}
 				return

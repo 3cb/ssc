@@ -27,16 +27,19 @@ type SocketPool struct {
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
 	// Inbound channels carry messages from caller application to WriteControl() method
-	InboundBytes chan Data
-	InboundJSON  chan JSONReaderWriter
+	InboundBytes chan Message
+	InboundJSON  chan JSONWriter
 
 	// Outbound channels carry messages from ReadControl() method to caller application
-	OutboundBytes chan Data
-	OutboundJSON  chan JSONReaderWriter
+	OutboundBytes chan Message
+	OutboundJSON  chan JSONWriter
 
 	// FromSocket channels carry messages from Read goroutines to ReadControl() method
-	Socket2PoolBytes chan Data
-	Socket2PoolJSON  chan JSONReaderWriter
+	Socket2PoolBytes chan Message
+	Socket2PoolJSON  chan JSONWriter
+
+	// Pong carries Socket instance to ControlPong goroutine
+	Pong chan *Socket
 
 	// Stop channels are used to shutdown control goroutines
 	StopReadControl     chan struct{}
@@ -56,7 +59,7 @@ type PoolConfig struct {
 	IsReadable   bool
 	IsWritable   bool
 	IsJSON       bool // If false, messages will be read/written in bytes
-	DataJSON     JSONReaderWriter
+	DataJSON     JSONWriter
 	PingInterval time.Duration //minimum of 30 seconds
 }
 
@@ -73,13 +76,13 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 	}
 	pipes := &Pipes{}
 	if config.IsJSON == true {
-		pipes.InboundJSON = make(chan JSONReaderWriter)
-		pipes.OutboundJSON = make(chan JSONReaderWriter)
-		pipes.Socket2PoolJSON = make(chan JSONReaderWriter)
+		pipes.InboundJSON = make(chan JSONWriter)
+		pipes.OutboundJSON = make(chan JSONWriter)
+		pipes.Socket2PoolJSON = make(chan JSONWriter)
 	} else {
-		pipes.InboundBytes = make(chan Data)
-		pipes.OutboundBytes = make(chan Data)
-		pipes.Socket2PoolBytes = make(chan Data)
+		pipes.InboundBytes = make(chan Message)
+		pipes.OutboundBytes = make(chan Message)
+		pipes.Socket2PoolBytes = make(chan Message)
 	}
 	pipes.StopReadControl = make(chan struct{})
 	pipes.StopWriteControl = make(chan struct{})

@@ -161,9 +161,9 @@ func (p *SocketPool) ControlPing(t time.Duration) {
 				if missed < 2 {
 					p.PingStack[s]++
 					if p.Config.IsJSON {
-						s.Pool2SocketJSON <- Data{Type: 9}
+						s.Pool2SocketJSON <- Message{Type: 9}
 					} else {
-						s.Pool2SocketBytes <- Data{Type: 9}
+						s.Pool2SocketBytes <- Message{Type: 9}
 					}
 				} else {
 					delete(p.PingStack, s)
