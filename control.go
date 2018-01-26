@@ -15,7 +15,7 @@ func (p *SocketPool) Control() {
 		go p.ControlWrite()
 	}
 	if p.Config.IsReadable && p.Config.IsWritable {
-		go p.ControlPing(p.Config.PingInterval)
+		go p.ControlPing()
 		go p.ControlPong()
 	}
 }
@@ -144,13 +144,13 @@ func (p *SocketPool) ControlShutdown() {
 	}
 }
 
-// ControlPing runs an infinite loop to send pings messages to websocket write goroutine at interval t
-func (p *SocketPool) ControlPing(t time.Duration) {
+// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined by PoolConfig
+func (p *SocketPool) ControlPing() {
 	defer func() {
 		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	log.Printf("ControlPing started.")
-	ticker := time.NewTicker(t)
+	ticker := time.NewTicker(p.Config.PingInterval)
 
 	for {
 		select {
