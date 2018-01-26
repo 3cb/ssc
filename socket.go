@@ -86,6 +86,11 @@ func (s *Socket) connectClient(pool *SocketPool, upgrader *websocket.Upgrader, w
 			pool.WriteStack[s] = false
 		}
 	}
+
+	if pool.Config.PingInterval > 0 {
+		pool.PingStack[s] = 0
+	}
+
 	return true, nil
 }
 
@@ -128,6 +133,11 @@ func (s *Socket) connectServer(pool *SocketPool) (bool, error) {
 			pool.WriteStack[s] = false
 		}
 	}
+
+	if pool.Config.PingInterval > 0 {
+		pool.PingStack[s] = 0
+	}
+
 	return true, nil
 }
 
@@ -198,6 +208,7 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
 	}()
+
 	for {
 		select {
 		case <-s.ShutdownWrite:

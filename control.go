@@ -14,9 +14,16 @@ func (p *SocketPool) Control() {
 	if p.Config.IsWritable {
 		go p.ControlWrite()
 	}
-	if p.Config.IsReadable && p.Config.IsWritable {
+
+	if p.Config.PingInterval > 0 && p.Config.IsReadable && p.Config.IsWritable {
 		go p.ControlPing()
 		go p.ControlPong()
+	}
+	if p.Config.PingInterval > 0 && !p.Config.IsReadable {
+		log.Print("Unable to start Ping/Pong control -- Cannot receive Pong messages from websockets that are not readable.")
+	}
+	if p.Config.PingInterval > 0 && !p.Config.IsWritable {
+		log.Print("Unable to start Ping/Pong control -- Cannot Ping websockets that are not writable.")
 	}
 }
 
@@ -26,6 +33,7 @@ func (p *SocketPool) ControlRead() {
 		log.Printf("ControlRead goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	log.Printf("ControlRead started.")
+
 	if p.Config.IsJSON {
 		for {
 			select {
@@ -150,32 +158,41 @@ func (p *SocketPool) ControlPing() {
 		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	log.Printf("ControlPing started.")
-	ticker := time.NewTicker(p.Config.PingInterval)
+
+	var t time.Duration
+	if p.Config.PingInterval < (time.Second * 30) {
+		t = time.Second * 30
+	} else {
+		t = p.Config.PingInterval
+	}
+	ticker := time.NewTicker(t)
 
 	for {
 		select {
 		case <-p.Pipes.StopPingControl:
 			return
 		case <-ticker.C:
-			for s, missed := range p.PingStack {
-				if missed < 2 {
-					p.mtx.Lock()
-					p.PingStack[s]++
-					p.mtx.Unlock()
-					if p.Config.IsJSON {
-						s.Pool2SocketJSON <- Message{Type: 9}
+			if len(p.PingStack) > 0 {
+				for s, missed := range p.PingStack {
+					if missed < 2 {
+						p.mtx.Lock()
+						p.PingStack[s]++
+						p.mtx.Unlock()
+						if p.Config.IsJSON {
+							s.Pool2SocketJSON <- Message{Type: 9}
+						} else {
+							s.Pool2SocketBytes <- Message{Type: 9}
+						}
 					} else {
-						s.Pool2SocketBytes <- Message{Type: 9}
-					}
-				} else {
-					p.mtx.Lock()
-					delete(p.PingStack, s)
-					p.mtx.Unlock()
-					if s.IsReadable {
-						s.ShutdownRead <- struct{}{}
-					}
-					if s.IsWritable {
-						s.ShutdownWrite <- struct{}{}
+						p.mtx.Lock()
+						delete(p.PingStack, s)
+						p.mtx.Unlock()
+						if s.IsReadable {
+							s.ShutdownRead <- struct{}{}
+						}
+						if s.IsWritable {
+							s.ShutdownWrite <- struct{}{}
+						}
 					}
 				}
 			}

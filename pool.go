@@ -34,7 +34,7 @@ type Pipes struct {
 	OutboundBytes chan Message
 	OutboundJSON  chan JSONWriter
 
-	// FromSocket channels carry messages from Read goroutines to ReadControl() method
+	// Socket2Pool channels carry messages from Read goroutines to ReadControl() method
 	Socket2PoolBytes chan Message
 	Socket2PoolJSON  chan JSONWriter
 
@@ -84,15 +84,21 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 		pipes.OutboundBytes = make(chan Message)
 		pipes.Socket2PoolBytes = make(chan Message)
 	}
+	pipes.Pong = make(chan *Socket)
+
 	pipes.StopReadControl = make(chan struct{})
 	pipes.StopWriteControl = make(chan struct{})
 	pipes.StopShutdownControl = make(chan struct{})
+	pipes.StopPingControl = make(chan struct{})
+	pipes.StopPongControl = make(chan struct{})
+
 	pipes.ErrorRead = make(chan ErrorMsg)
 	pipes.ErrorWrite = make(chan ErrorMsg)
 
 	pool := &SocketPool{
 		ReadStack:  make(map[*Socket]bool),
 		WriteStack: make(map[*Socket]bool),
+		PingStack:  make(map[*Socket]int),
 		ClosedURLs: make(map[string]bool),
 		Pipes:      pipes,
 		Config:     config,
