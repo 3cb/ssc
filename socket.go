@@ -1,7 +1,6 @@
 package ssc
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -17,7 +16,7 @@ type Socket struct {
 	IsWritable       bool
 	IsJSON           bool
 	Pool2SocketBytes chan Message
-	Pool2SocketJSON  chan JSONWriter
+	Pool2SocketJSON  chan JSONReaderWriter
 	ShutdownRead     chan struct{}
 	ShutdownWrite    chan struct{}
 	OpenedAt         time.Time
@@ -27,10 +26,10 @@ type Socket struct {
 // NewSocketInstance returns a new instance of a Socket
 func newSocketInstance(url string, config PoolConfig) *Socket {
 	var chBytes chan Message
-	var chJSON chan JSONWriter
+	var chJSON chan JSONReaderWriter
 
 	if config.IsJSON == true {
-		chJSON = make(chan JSONWriter)
+		chJSON = make(chan JSONReaderWriter)
 	} else {
 		chBytes = make(chan Message)
 	}
@@ -171,7 +170,7 @@ func (s *Socket) readSocketBytes(pipes *Pipes) {
 
 // ReadSocketJSON runs a continuous loop that reads messages from websocket and sends the JSON encoded message to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-func (s *Socket) readSocketJSON(pipes *Pipes, data JSONWriter) {
+func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()
@@ -191,11 +190,10 @@ func (s *Socket) readSocketJSON(pipes *Pipes, data JSONWriter) {
 			if msgType == 10 {
 				pipes.Pong <- s
 			} else {
-				err = json.Unmarshal(msg, &data)
+				err = data.ReadJSON(s, msg, pipes.Socket2PoolJSON)
 				if err != nil {
 					continue
 				}
-				pipes.Socket2PoolJSON <- data
 			}
 		}
 	}
@@ -226,7 +224,7 @@ func (s *Socket) writeSocketBytes(pipes *Pipes) {
 
 // WriteSocketJSON runs a continuous loop that reads values sent from the SocketPool controller and writes them to the websocket.
 // It listens for shutdown command from the controller and will close websocket connection on any such command as well as on any error writing to the websocket
-func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONWriter) {
+func (s *Socket) writeSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 	defer func() {
 		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		s.Connection.Close()

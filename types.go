@@ -6,8 +6,9 @@ type ErrorMsg struct {
 	Error  error
 }
 
-// JSONWriter contains one method which checks a channel and makes a type assert
-type JSONWriter interface {
+// JSONReaderWriter contains one method which checks a channel and makes a type assert
+type JSONReaderWriter interface {
+	ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error
 	WriteJSON(s *Socket) error
 }
 
@@ -15,6 +16,11 @@ type JSONWriter interface {
 type Message struct {
 	Type    int    `json:"type"`
 	Payload []byte `json:"payload"`
+}
+
+// ReadJSON is an empty method used to satisfy the JSONReaderWriter interface
+func (m Message) ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error {
+	return nil
 }
 
 // WriteJSON is used to write ping messages to a JSON websocket

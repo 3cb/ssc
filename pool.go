@@ -28,15 +28,15 @@ type SocketPool struct {
 type Pipes struct {
 	// Inbound channels carry messages from caller application to WriteControl() method
 	InboundBytes chan Message
-	InboundJSON  chan JSONWriter
+	InboundJSON  chan JSONReaderWriter
 
 	// Outbound channels carry messages from ReadControl() method to caller application
 	OutboundBytes chan Message
-	OutboundJSON  chan JSONWriter
+	OutboundJSON  chan JSONReaderWriter
 
 	// Socket2Pool channels carry messages from Read goroutines to ReadControl() method
 	Socket2PoolBytes chan Message
-	Socket2PoolJSON  chan JSONWriter
+	Socket2PoolJSON  chan JSONReaderWriter
 
 	// Pong carries Socket instance to ControlPong goroutine
 	Pong chan *Socket
@@ -59,7 +59,7 @@ type PoolConfig struct {
 	IsReadable   bool
 	IsWritable   bool
 	IsJSON       bool // If false, messages will be read/written in bytes
-	DataJSON     JSONWriter
+	DataJSON     JSONReaderWriter
 	PingInterval time.Duration //minimum of 30 seconds
 }
 
@@ -76,9 +76,9 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 	}
 	pipes := &Pipes{}
 	if config.IsJSON == true {
-		pipes.InboundJSON = make(chan JSONWriter)
-		pipes.OutboundJSON = make(chan JSONWriter)
-		pipes.Socket2PoolJSON = make(chan JSONWriter)
+		pipes.InboundJSON = make(chan JSONReaderWriter)
+		pipes.OutboundJSON = make(chan JSONReaderWriter)
+		pipes.Socket2PoolJSON = make(chan JSONReaderWriter)
 	} else {
 		pipes.InboundBytes = make(chan Message)
 		pipes.OutboundBytes = make(chan Message)
