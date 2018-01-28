@@ -5,13 +5,13 @@ NOTE: This package is still under development.
 
 To import the package into your application:
 
-```
+```bash
 import "github.com/3cb/ssc"
 ```
 
 To install the package on your system:
 
-```
+```bash
 go get "github.com/3cb/ssc"
 ```
 
@@ -19,7 +19,7 @@ go get "github.com/3cb/ssc"
 ## Example Usage
 
 First create an instance of `ssc.SocketPool` by calling `ssc.NewSocketPool()` which takes a configuration object as a parameter:
-```
+```go
 sockets := []string{
     "wss://api.example.com/ws1",
     "wss://api.example.com/ws2",
@@ -44,7 +44,7 @@ if err != nil {
 
 The above example will create goroutines that read and write in bytes.  In order to read and write with JSON the caller has to set the `IsJSON` field of the config object to `true` and set the `DataJSON` field of the config object to an empty instance of a data structure that satisfies the `ssc.JSONReaderWriter` interface:
 
-```
+```go
 type JSONReaderWriter interface {
 	ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error
 	WriteJSON(s *Socket) error
@@ -55,7 +55,7 @@ An example of this can be seen in the "go_stream" branch:
 https://github.com/3cb/gemini_clone/blob/go_stream/types/types.go
 
 Data type with methods that implement JSONReaderWriter interface:
-```
+```go
 type Message struct {
 	Type      string  `json:"type"`
 	Product   string  `json:"product"`
