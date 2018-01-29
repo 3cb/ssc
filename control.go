@@ -67,11 +67,13 @@ func (p *SocketPool) ControlWrite() {
 			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundJSON:
-				for socket, open := range p.WriteStack {
+				p.Writers.mtx.RLock()
+				for socket, open := range p.Writers.Stack {
 					if open {
 						socket.Pool2SocketJSON <- v
 					}
 				}
+				p.Writers.mtx.RUnlock()
 			}
 		}
 	} else {
@@ -80,11 +82,13 @@ func (p *SocketPool) ControlWrite() {
 			case <-p.Pipes.StopWriteControl:
 				return
 			case v := <-p.Pipes.InboundBytes:
-				for socket, open := range p.WriteStack {
+				p.Writers.mtx.RLock()
+				for socket, open := range p.Writers.Stack {
 					if open {
 						socket.Pool2SocketBytes <- v
 					}
 				}
+				p.Writers.mtx.RUnlock()
 			}
 		}
 	}
@@ -103,52 +107,68 @@ func (p *SocketPool) ControlShutdown() {
 			return
 		case e := <-p.Pipes.ErrorRead:
 			s := e.Socket
+			p.Readers.mtx.Lock()
+			p.Writers.mtx.Lock()
 			switch {
-			case p.ReadStack[s] && p.WriteStack[s]:
-				p.ReadStack[s] = false
+			case p.Readers.Stack[s] && p.Writers.Stack[s]:
+				p.Readers.Stack[s] = false
 				s.ShutdownWrite <- struct{}{}
-			case p.ReadStack[s] && !p.WriteStack[s]:
-				p.ReadStack[s] = false
+			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
+				p.Readers.Stack[s] = false
 				if len(s.URL) > 0 {
-					p.ClosedURLs[s.URL] = true
+					p.ClosedURLs.mtx.Lock()
+					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.mtx.Unlock()
 				}
 				s.ClosedAt = time.Now()
-				delete(p.ReadStack, s)
-				delete(p.WriteStack, s)
-			case !p.ReadStack[s] && p.WriteStack[s]:
+				delete(p.Readers.Stack, s)
+				delete(p.Writers.Stack, s)
+			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
 				s.ShutdownWrite <- struct{}{}
-			case !p.ReadStack[s] && !p.WriteStack[s]:
+			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
-					p.ClosedURLs[s.URL] = true
+					p.ClosedURLs.mtx.Lock()
+					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.mtx.Unlock()
 				}
 				s.ClosedAt = time.Now()
-				delete(p.ReadStack, s)
-				delete(p.WriteStack, s)
+				delete(p.Readers.Stack, s)
+				delete(p.Writers.Stack, s)
 			}
+			p.Readers.mtx.Unlock()
+			p.Writers.mtx.Unlock()
 		case e := <-p.Pipes.ErrorWrite:
 			s := e.Socket
+			p.Readers.mtx.Lock()
+			p.Writers.mtx.Lock()
 			switch {
-			case p.ReadStack[s] && p.WriteStack[s]:
-				p.WriteStack[s] = false
+			case p.Readers.Stack[s] && p.Writers.Stack[s]:
+				p.Writers.Stack[s] = false
 				s.ShutdownRead <- struct{}{}
-			case p.ReadStack[s] && !p.WriteStack[s]:
+			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				s.ShutdownRead <- struct{}{}
-			case !p.ReadStack[s] && p.WriteStack[s]:
-				p.WriteStack[s] = false
+			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
+				p.Writers.Stack[s] = false
 				if len(s.URL) > 0 {
-					p.ClosedURLs[s.URL] = true
+					p.ClosedURLs.mtx.Lock()
+					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.mtx.Unlock()
 				}
 				s.ClosedAt = time.Now()
-				delete(p.ReadStack, s)
-				delete(p.WriteStack, s)
-			case !p.ReadStack[s] && !p.WriteStack[s]:
+				delete(p.Readers.Stack, s)
+				delete(p.Writers.Stack, s)
+			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
-					p.ClosedURLs[s.URL] = true
+					p.ClosedURLs.mtx.Lock()
+					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.mtx.Unlock()
 				}
 				s.ClosedAt = time.Now()
-				delete(p.ReadStack, s)
-				delete(p.WriteStack, s)
+				delete(p.Readers.Stack, s)
+				delete(p.Writers.Stack, s)
 			}
+			p.Readers.mtx.Unlock()
+			p.Writers.mtx.Unlock()
 		}
 	}
 }
@@ -173,21 +193,18 @@ func (p *SocketPool) ControlPing() {
 		case <-p.Pipes.StopPingControl:
 			return
 		case <-ticker.C:
-			if len(p.PingStack) > 0 {
-				for s, missed := range p.PingStack {
+			if p.isPingStackEmpty() {
+				p.Pingers.mtx.Lock()
+				for s, missed := range p.Pingers.Stack {
 					if missed < 2 {
-						p.mtx.Lock()
-						p.PingStack[s]++
-						p.mtx.Unlock()
+						p.Pingers.Stack[s]++
 						if p.Config.IsJSON {
 							s.Pool2SocketJSON <- Message{Type: 9}
 						} else {
 							s.Pool2SocketBytes <- Message{Type: 9}
 						}
 					} else {
-						p.mtx.Lock()
-						delete(p.PingStack, s)
-						p.mtx.Unlock()
+						delete(p.Pingers.Stack, s)
 						if s.IsReadable {
 							s.ShutdownRead <- struct{}{}
 						}
@@ -196,6 +213,7 @@ func (p *SocketPool) ControlPing() {
 						}
 					}
 				}
+				p.Pingers.mtx.Unlock()
 			}
 		}
 	}
@@ -213,9 +231,9 @@ func (p *SocketPool) ControlPong() {
 		case <-p.Pipes.StopPongControl:
 			return
 		case s := <-p.Pipes.Pong:
-			p.mtx.Lock()
-			p.PingStack[s]--
-			p.mtx.Unlock()
+			p.Pingers.mtx.Lock()
+			p.Pingers.Stack[s]--
+			p.Pingers.mtx.Unlock()
 		}
 	}
 }

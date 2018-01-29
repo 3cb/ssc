@@ -14,30 +14,38 @@ import (
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type SocketPool struct {
-	// Contains map of sockets with read goroutines
-	Readers struct {
-		mtx   sync.RWMutex
-		Stack map[*Socket]bool
-	}
-	// Contains map of sockets with write goroutines
-	Writers struct {
-		mtx   sync.RWMutex
-		Stack map[*Socket]bool
-	}
-	// Contains map of sockets being pinged
-	Pingers struct {
-		mtx   sync.RWMutex
-		Stack map[*Socket]int
-	}
-	// Contains map of all URLs of closed server websockets
-	ClosedURLs struct {
-		mtx   sync.RWMutex
-		Stack map[string]bool
-	}
+	Readers
+	Writers
+	Pingers
+	ClosedURLs
 	// Contains SocketPools communication channels
 	Pipes *Pipes
 	// Contains SocketPool's configuration object
 	Config PoolConfig
+}
+
+// Readers contains map of sockets with read goroutines
+type Readers struct {
+	mtx   sync.RWMutex
+	Stack map[*Socket]bool
+}
+
+// Writers contains map of sockets with write goroutines
+type Writers struct {
+	mtx   sync.RWMutex
+	Stack map[*Socket]bool
+}
+
+// Pingers contains map of sockets being pinged
+type Pingers struct {
+	mtx   sync.RWMutex
+	Stack map[*Socket]int
+}
+
+// ClosedURLs contains map of all URLs of closed server websockets
+type ClosedURLs struct {
+	mtx   sync.RWMutex
+	Stack map[string]bool
 }
 
 // Pipes contains data communication channels:
@@ -113,10 +121,10 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 	pipes.ErrorWrite = make(chan ErrorMsg)
 
 	pool := &SocketPool{
-		ReadStack:  make(map[*Socket]bool),
-		WriteStack: make(map[*Socket]bool),
-		PingStack:  make(map[*Socket]int),
-		ClosedURLs: make(map[string]bool),
+		Readers:    Readers{Stack: make(map[*Socket]bool)},
+		Writers:    Writers{Stack: make(map[*Socket]bool)},
+		Pingers:    Pingers{Stack: make(map[*Socket]int)},
+		ClosedURLs: ClosedURLs{Stack: make(map[string]bool)},
 		Pipes:      pipes,
 		Config:     config,
 	}
@@ -158,4 +166,13 @@ func (p *SocketPool) AddServerSocket(url string) {
 	} else {
 		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
 	}
+}
+
+func (p *SocketPool) isPingStackEmpty() bool {
+	p.Pingers.mtx.RLock()
+	defer p.Pingers.mtx.RUnlock()
+	if len(p.Pingers.Stack) > 0 {
+		return false
+	}
+	return true
 }

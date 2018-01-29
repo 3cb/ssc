@@ -57,37 +57,43 @@ func (s *Socket) connectClient(pool *SocketPool, upgrader *websocket.Upgrader, w
 	s.IsConnected = true
 	s.OpenedAt = time.Now()
 
+	pool.Readers.mtx.Lock()
+	pool.Writers.mtx.Lock()
 	switch s.IsJSON {
 	case true:
 		if s.IsReadable == true {
 			go s.readSocketJSON(pool.Pipes, pool.Config.DataJSON)
-			pool.ReadStack[s] = true
+			pool.Readers.Stack[s] = true
 		} else {
-			pool.ReadStack[s] = false
+			pool.Readers.Stack[s] = false
 		}
 		if s.IsWritable == true {
 			go s.writeSocketJSON(pool.Pipes, pool.Config.DataJSON)
-			pool.WriteStack[s] = true
+			pool.Writers.Stack[s] = true
 		} else {
-			pool.WriteStack[s] = false
+			pool.Writers.Stack[s] = false
 		}
 	case false:
 		if s.IsReadable {
 			go s.readSocketBytes(pool.Pipes)
-			pool.ReadStack[s] = true
+			pool.Readers.Stack[s] = true
 		} else {
-			pool.ReadStack[s] = false
+			pool.Readers.Stack[s] = false
 		}
 		if s.IsWritable {
 			go s.writeSocketBytes(pool.Pipes)
-			pool.WriteStack[s] = true
+			pool.Writers.Stack[s] = true
 		} else {
-			pool.WriteStack[s] = false
+			pool.Writers.Stack[s] = false
 		}
 	}
+	pool.Readers.mtx.Unlock()
+	pool.Writers.mtx.Unlock()
 
 	if pool.Config.PingInterval > 0 {
-		pool.PingStack[s] = 0
+		pool.Pingers.mtx.Lock()
+		pool.Pingers.Stack[s] = 0
+		pool.Pingers.mtx.Unlock()
 	}
 
 	return true, nil
@@ -104,37 +110,43 @@ func (s *Socket) connectServer(pool *SocketPool) (bool, error) {
 	s.IsConnected = true
 	s.OpenedAt = time.Now()
 
+	pool.Readers.mtx.Lock()
+	pool.Writers.mtx.Lock()
 	switch s.IsJSON {
 	case true:
 		if s.IsReadable == true {
 			go s.readSocketJSON(pool.Pipes, pool.Config.DataJSON)
-			pool.ReadStack[s] = true
+			pool.Readers.Stack[s] = true
 		} else {
-			pool.ReadStack[s] = false
+			pool.Readers.Stack[s] = false
 		}
 		if s.IsWritable == true {
 			go s.writeSocketJSON(pool.Pipes, pool.Config.DataJSON)
-			pool.WriteStack[s] = true
+			pool.Writers.Stack[s] = true
 		} else {
-			pool.WriteStack[s] = false
+			pool.Writers.Stack[s] = false
 		}
 	case false:
 		if s.IsReadable {
 			go s.readSocketBytes(pool.Pipes)
-			pool.ReadStack[s] = true
+			pool.Readers.Stack[s] = true
 		} else {
-			pool.ReadStack[s] = false
+			pool.Readers.Stack[s] = false
 		}
 		if s.IsWritable {
 			go s.writeSocketBytes(pool.Pipes)
-			pool.WriteStack[s] = true
+			pool.Writers.Stack[s] = true
 		} else {
-			pool.WriteStack[s] = false
+			pool.Writers.Stack[s] = false
 		}
 	}
+	pool.Readers.mtx.Unlock()
+	pool.Writers.mtx.Unlock()
 
 	if pool.Config.PingInterval > 0 {
-		pool.PingStack[s] = 0
+		pool.Pingers.mtx.Lock()
+		pool.Pingers.Stack[s] = 0
+		pool.Pingers.mtx.Unlock()
 	}
 
 	return true, nil
