@@ -96,6 +96,7 @@ func (p *SocketPool) ControlShutdown() {
 		log.Printf("ControlShutdown goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	log.Printf("ControlShutdown started.")
+
 	for {
 		select {
 		case <-p.Pipes.StopShutdownControl:

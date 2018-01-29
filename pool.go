@@ -14,13 +14,30 @@ import (
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type SocketPool struct {
-	mtx        sync.Mutex
-	ReadStack  map[*Socket]bool
-	WriteStack map[*Socket]bool
-	PingStack  map[*Socket]int
-	ClosedURLs map[string]bool
-	Pipes      *Pipes
-	Config     PoolConfig
+	// Contains map of sockets with read goroutines
+	Readers struct {
+		mtx   sync.RWMutex
+		Stack map[*Socket]bool
+	}
+	// Contains map of sockets with write goroutines
+	Writers struct {
+		mtx   sync.RWMutex
+		Stack map[*Socket]bool
+	}
+	// Contains map of sockets being pinged
+	Pingers struct {
+		mtx   sync.RWMutex
+		Stack map[*Socket]int
+	}
+	// Contains map of all URLs of closed server websockets
+	ClosedURLs struct {
+		mtx   sync.RWMutex
+		Stack map[string]bool
+	}
+	// Contains SocketPools communication channels
+	Pipes *Pipes
+	// Contains SocketPool's configuration object
+	Config PoolConfig
 }
 
 // Pipes contains data communication channels:
