@@ -18,9 +18,7 @@ type SocketPool struct {
 	Writers
 	Pingers
 	ClosedURLs
-	// Contains SocketPools communication channels
-	Pipes *Pipes
-	// Contains SocketPool's configuration object
+	*Pipes
 	Config PoolConfig
 }
 
