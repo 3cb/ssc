@@ -2,7 +2,6 @@ package ssc
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -11,7 +10,6 @@ import (
 type Socket struct {
 	Connection       *websocket.Conn
 	URL              string
-	IsConnected      bool
 	IsReadable       bool
 	IsWritable       bool
 	IsJSON           bool
@@ -19,8 +17,6 @@ type Socket struct {
 	Pool2SocketJSON  chan JSONReaderWriter
 	ShutdownRead     chan struct{}
 	ShutdownWrite    chan struct{}
-	OpenedAt         time.Time
-	ClosedAt         time.Time
 }
 
 // NewSocketInstance returns a new instance of a Socket
@@ -54,8 +50,6 @@ func (s *Socket) connectClient(pool *SocketPool, upgrader *websocket.Upgrader, w
 		return false, err
 	}
 	s.Connection = c
-	s.IsConnected = true
-	s.OpenedAt = time.Now()
 
 	pool.Readers.mtx.Lock()
 	pool.Writers.mtx.Lock()
@@ -107,8 +101,6 @@ func (s *Socket) connectServer(pool *SocketPool) (bool, error) {
 		return false, err
 	}
 	s.Connection = c
-	s.IsConnected = true
-	s.OpenedAt = time.Now()
 
 	pool.Readers.mtx.Lock()
 	pool.Writers.mtx.Lock()

@@ -120,7 +120,6 @@ func (p *SocketPool) ControlShutdown() {
 					p.ClosedURLs.Stack[s.URL] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
-				s.ClosedAt = time.Now()
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
@@ -131,7 +130,6 @@ func (p *SocketPool) ControlShutdown() {
 					p.ClosedURLs.Stack[s.URL] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
-				s.ClosedAt = time.Now()
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
 			}
@@ -154,7 +152,6 @@ func (p *SocketPool) ControlShutdown() {
 					p.ClosedURLs.Stack[s.URL] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
-				s.ClosedAt = time.Now()
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
@@ -163,7 +160,6 @@ func (p *SocketPool) ControlShutdown() {
 					p.ClosedURLs.Stack[s.URL] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
-				s.ClosedAt = time.Now()
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
 			}
