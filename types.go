@@ -6,12 +6,6 @@ type ErrorMsg struct {
 	Error  error
 }
 
-// JSONReaderWriter contains one method which checks a channel and makes a type assert
-type JSONReaderWriter interface {
-	ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error
-	WriteJSON(s *Socket) error
-}
-
 // Message wraps message type and []bytetogether so sender/receiver can identify the target/source respectively
 type Message struct {
 	Type    int    `json:"type"`
@@ -30,4 +24,10 @@ func (m Message) WriteJSON(s *Socket) error {
 		return err
 	}
 	return nil
+}
+
+// JSONReaderWriter contains one method which checks a channel and makes a type assert
+type JSONReaderWriter interface {
+	ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error
+	WriteJSON(s *Socket) error
 }

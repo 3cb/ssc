@@ -76,7 +76,7 @@ type Pipes struct {
 	ErrorWrite chan ErrorMsg
 }
 
-// PoolConfig is used to pass configuration settings to the Pool initialization function
+// Config is used to pass configuration settings to the Pool initialization function
 type Config struct {
 	ServerURLs   []string
 	IsReadable   bool
@@ -88,7 +88,7 @@ type Config struct {
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 // If slice of urls is nil or empty SocketPool will be created and control methods will be launched and waiting
-func NewSocketPool(config PoolConfig) (*SocketPool, error) {
+func NewSocketPool(config Config) (*SocketPool, error) {
 	if !config.IsReadable && !config.IsWritable {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
