@@ -147,6 +147,7 @@ func NewSocketPool(config PoolConfig) (*SocketPool, error) {
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
+// New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
 	s := newSocketInstance("", p.Config)
 	success, err := s.connectClient(p, upgrader, w, r)
