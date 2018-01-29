@@ -19,7 +19,7 @@ type SocketPool struct {
 	Pingers
 	ClosedURLs
 	*Pipes
-	Config PoolConfig
+	Config
 }
 
 // Readers contains map of sockets with read goroutines
@@ -77,7 +77,7 @@ type Pipes struct {
 }
 
 // PoolConfig is used to pass configuration settings to the Pool initialization function
-type PoolConfig struct {
+type Config struct {
 	ServerURLs   []string
 	IsReadable   bool
 	IsWritable   bool

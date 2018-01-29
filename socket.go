@@ -20,7 +20,7 @@ type Socket struct {
 }
 
 // NewSocketInstance returns a new instance of a Socket
-func newSocketInstance(url string, config PoolConfig) *Socket {
+func newSocketInstance(url string, config Config) *Socket {
 	var chBytes chan Message
 	var chJSON chan JSONReaderWriter
 
