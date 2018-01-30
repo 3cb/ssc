@@ -161,7 +161,7 @@ func (p *SocketPool) ControlPing() {
 		case <-p.Pipes.StopPingControl:
 			return
 		case <-ticker.C:
-			if p.isPingStackEmpty() {
+			if !p.isPingStackEmpty() {
 				p.Pingers.mtx.Lock()
 				for s, missed := range p.Pingers.Stack {
 					if missed < 2 {
