@@ -42,7 +42,11 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 		p.Pingers.mtx.Lock()
 		p.Pingers.Stack[s]--
 		p.Pingers.mtx.Unlock()
-		fmt.Printf("length of pinger stack: %v\ncount for this socket: %v", len(p.Pingers.Stack), p.Pingers.Stack[s])
+		return nil
+	})
+	s.Connection.SetCloseHandler(func(code int, text string) error {
+		addr := s.Connection.RemoteAddr()
+		fmt.Printf("websocket at %v has been closed: %v", addr, code)
 		return nil
 	})
 
@@ -80,6 +84,15 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 		return false, err
 	}
 	s.Connection = c
+	s.Connection.SetPingHandler(func(appData string) error {
+		s.Pool2Socket <- Message{Type: websocket.PongMessage, Payload: []byte("")}
+		return nil
+	})
+	s.Connection.SetCloseHandler(func(code int, text string) error {
+		addr := s.Connection.RemoteAddr()
+		fmt.Printf("websocket at %v has been closed: %v", addr, code)
+		return nil
+	})
 
 	p.Readers.mtx.Lock()
 	if s.IsReadable {
