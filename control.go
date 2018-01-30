@@ -19,10 +19,10 @@ func (p *SocketPool) Control() {
 		go p.ControlPing()
 	}
 	if p.Config.PingInterval > 0 && !p.Config.IsReadable {
-		log.Print("Unable to start Ping/Pong control -- Cannot receive Pong messages from websockets that are not readable.")
+		log.Print("Unable to start Ping control -- Cannot receive Pong messages from websockets that are not readable.")
 	}
 	if p.Config.PingInterval > 0 && !p.Config.IsWritable {
-		log.Print("Unable to start Ping/Pong control -- Cannot Ping websockets that are not writable.")
+		log.Print("Unable to start Ping control -- Cannot Ping websockets that are not writable.")
 	}
 }
 
@@ -81,9 +81,11 @@ func (p *SocketPool) ControlShutdown() {
 			s := e.Socket
 			p.Readers.mtx.Lock()
 			p.Writers.mtx.Lock()
+			p.Pingers.mtx.Lock()
 			switch {
 			case p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Readers.Stack[s] = false
+				delete(p.Pingers.Stack, s)
 				s.ShutdownWrite <- struct{}{}
 			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				p.Readers.Stack[s] = false
@@ -94,7 +96,9 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
+				delete(p.Pingers.Stack, s)
 				s.ShutdownWrite <- struct{}{}
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
@@ -104,18 +108,23 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			}
 			p.Readers.mtx.Unlock()
 			p.Writers.mtx.Unlock()
+			p.Pingers.mtx.Unlock()
 		case e := <-p.Pipes.ErrorWrite:
 			s := e.Socket
 			p.Readers.mtx.Lock()
 			p.Writers.mtx.Lock()
+			p.Pingers.mtx.Lock()
 			switch {
 			case p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Writers.Stack[s] = false
+				delete(p.Pingers.Stack, s)
 				s.ShutdownRead <- struct{}{}
 			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
+				delete(p.Pingers.Stack, s)
 				s.ShutdownRead <- struct{}{}
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Writers.Stack[s] = false
@@ -126,6 +135,7 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
 					p.ClosedURLs.mtx.Lock()
@@ -134,14 +144,16 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			}
 			p.Readers.mtx.Unlock()
 			p.Writers.mtx.Unlock()
+			p.Pingers.mtx.Unlock()
 		}
 	}
 }
 
-// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined by PoolConfig
+// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined in Config
 func (p *SocketPool) ControlPing() {
 	defer func() {
 		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())

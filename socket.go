@@ -1,6 +1,7 @@
 package ssc
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -37,6 +38,13 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 		return false, err
 	}
 	s.Connection = c
+	s.Connection.SetPongHandler(func(appData string) error {
+		p.Pingers.mtx.Lock()
+		p.Pingers.Stack[s]--
+		p.Pingers.mtx.Unlock()
+		fmt.Printf("length of pinger stack: %v\ncount for this socket: %v", len(p.Pingers.Stack), p.Pingers.Stack[s])
+		return nil
+	})
 
 	p.Readers.mtx.Lock()
 	if s.IsReadable {

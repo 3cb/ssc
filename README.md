@@ -104,6 +104,8 @@ func (m Message) ReadJSON(s *ssc.Socket, b []byte, Socket2PoolJSON chan<- ssc.JS
 
 ## Work Left To Do
 
+-> Add ping/pong for server connections
+
 -> Update comments
 
 -> Rewrite Shutdown and Remove methods for SocketPool
