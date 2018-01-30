@@ -1,8 +1,11 @@
 package ssc
 
 import (
+	"fmt"
 	"log"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Control method launches ControlShutdown(), ControlRead(), and ControlWrite()
@@ -14,15 +17,8 @@ func (p *SocketPool) Control() {
 	if p.Config.IsWritable {
 		go p.ControlWrite()
 	}
-
-	if p.Config.PingInterval > 0 && p.Config.IsReadable && p.Config.IsWritable {
+	if p.Config.PingInterval > 0 {
 		go p.ControlPing()
-	}
-	if p.Config.PingInterval > 0 && !p.Config.IsReadable {
-		log.Print("Unable to start Ping control -- Cannot receive Pong messages from websockets that are not readable.")
-	}
-	if p.Config.PingInterval > 0 && !p.Config.IsWritable {
-		log.Print("Unable to start Ping control -- Cannot Ping websockets that are not writable.")
 	}
 }
 
@@ -175,10 +171,11 @@ func (p *SocketPool) ControlPing() {
 		case <-ticker.C:
 			if !p.isPingStackEmpty() {
 				p.Pingers.mtx.Lock()
+				fmt.Printf("%v active websocket connections", len(p.Pingers.Stack))
 				for s, missed := range p.Pingers.Stack {
 					if missed < 2 {
 						p.Pingers.Stack[s]++
-						s.Pool2Socket <- Message{Type: 9}
+						s.Pool2Socket <- Message{Type: websocket.PingMessage}
 					} else {
 						if s.IsReadable {
 							s.ShutdownRead <- struct{}{}
