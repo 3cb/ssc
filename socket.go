@@ -1,6 +1,7 @@
 package ssc
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -50,6 +51,13 @@ func (s *Socket) connectClient(pool *SocketPool, upgrader *websocket.Upgrader, w
 		return false, err
 	}
 	s.Connection = c
+	s.Connection.SetPongHandler(func(appData string) error {
+		pool.Pingers.mtx.Lock()
+		pool.Pingers.Stack[s]--
+		pool.Pingers.mtx.Unlock()
+		fmt.Printf("length of pinger stack: %v\ncount for this socket: %v", len(pool.Pingers.Stack), pool.Pingers.Stack[s])
+		return nil
+	})
 
 	pool.Readers.mtx.Lock()
 	pool.Writers.mtx.Lock()
@@ -163,11 +171,7 @@ func (s *Socket) readSocketBytes(pipes *Pipes) {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			if msgType == 10 {
-				pipes.Pong <- s
-			} else {
-				pipes.Socket2PoolBytes <- Message{Type: msgType, Payload: msg}
-			}
+			pipes.Socket2PoolBytes <- Message{Type: msgType, Payload: msg}
 		}
 	}
 }
@@ -186,18 +190,14 @@ func (s *Socket) readSocketJSON(pipes *Pipes, data JSONReaderWriter) {
 			pipes.ErrorRead <- ErrorMsg{s, nil}
 			return
 		default:
-			msgType, msg, err := s.Connection.ReadMessage()
+			_, msg, err := s.Connection.ReadMessage()
 			if err != nil {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			if msgType == 10 {
-				pipes.Pong <- s
-			} else {
-				err = data.ReadJSON(s, msg, pipes.Socket2PoolJSON)
-				if err != nil {
-					continue
-				}
+			err = data.ReadJSON(s, msg, pipes.Socket2PoolJSON)
+			if err != nil {
+				continue
 			}
 		}
 	}

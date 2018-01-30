@@ -61,9 +61,6 @@ type Pipes struct {
 	Socket2PoolBytes chan Message
 	Socket2PoolJSON  chan JSONReaderWriter
 
-	// Pong carries Socket instance to ControlPong goroutine
-	Pong chan *Socket
-
 	// Stop channels are used to shutdown control goroutines
 	StopReadControl     chan struct{}
 	StopWriteControl    chan struct{}
@@ -81,7 +78,7 @@ type Config struct {
 	ServerURLs   []string
 	IsReadable   bool
 	IsWritable   bool
-	IsJSON       bool // If false, messages will be read/written in bytes
+	IsJSON       bool
 	DataJSON     JSONReaderWriter
 	PingInterval time.Duration //minimum of 30 seconds
 }
@@ -107,7 +104,6 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 		pipes.OutboundBytes = make(chan Message)
 		pipes.Socket2PoolBytes = make(chan Message)
 	}
-	pipes.Pong = make(chan *Socket)
 
 	pipes.StopReadControl = make(chan struct{})
 	pipes.StopWriteControl = make(chan struct{})

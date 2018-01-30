@@ -3,6 +3,8 @@ package ssc
 import (
 	"log"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Control method launches ControlShutdown(), ControlRead(), and ControlWrite()
@@ -17,13 +19,12 @@ func (p *SocketPool) Control() {
 
 	if p.Config.PingInterval > 0 && p.Config.IsReadable && p.Config.IsWritable {
 		go p.ControlPing()
-		go p.ControlPong()
 	}
 	if p.Config.PingInterval > 0 && !p.Config.IsReadable {
-		log.Print("Unable to start Ping/Pong control -- Cannot receive Pong messages from websockets that are not readable.")
+		log.Print("Unable to start Ping control -- Cannot receive Pong messages from websockets that are not readable.")
 	}
 	if p.Config.PingInterval > 0 && !p.Config.IsWritable {
-		log.Print("Unable to start Ping/Pong control -- Cannot Ping websockets that are not writable.")
+		log.Print("Unable to start Ping control -- Cannot Ping websockets that are not writable.")
 	}
 }
 
@@ -109,9 +110,11 @@ func (p *SocketPool) ControlShutdown() {
 			s := e.Socket
 			p.Readers.mtx.Lock()
 			p.Writers.mtx.Lock()
+			p.Pingers.mtx.Lock()
 			switch {
 			case p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Readers.Stack[s] = false
+				delete(p.Pingers.Stack, s)
 				s.ShutdownWrite <- struct{}{}
 			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				p.Readers.Stack[s] = false
@@ -122,7 +125,9 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
+				delete(p.Pingers.Stack, s)
 				s.ShutdownWrite <- struct{}{}
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
@@ -132,18 +137,23 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			}
 			p.Readers.mtx.Unlock()
 			p.Writers.mtx.Unlock()
+			p.Pingers.mtx.Unlock()
 		case e := <-p.Pipes.ErrorWrite:
 			s := e.Socket
 			p.Readers.mtx.Lock()
 			p.Writers.mtx.Lock()
+			p.Pingers.mtx.Lock()
 			switch {
 			case p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Writers.Stack[s] = false
+				delete(p.Pingers.Stack, s)
 				s.ShutdownRead <- struct{}{}
 			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
+				delete(p.Pingers.Stack, s)
 				s.ShutdownRead <- struct{}{}
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Writers.Stack[s] = false
@@ -154,6 +164,7 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				if len(s.URL) > 0 {
 					p.ClosedURLs.mtx.Lock()
@@ -162,14 +173,16 @@ func (p *SocketPool) ControlShutdown() {
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
+				delete(p.Pingers.Stack, s)
 			}
 			p.Readers.mtx.Unlock()
 			p.Writers.mtx.Unlock()
+			p.Pingers.mtx.Unlock()
 		}
 	}
 }
 
-// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined by PoolConfig
+// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined in Config
 func (p *SocketPool) ControlPing() {
 	defer func() {
 		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())
@@ -189,18 +202,17 @@ func (p *SocketPool) ControlPing() {
 		case <-p.Pipes.StopPingControl:
 			return
 		case <-ticker.C:
-			if p.isPingStackEmpty() {
+			if !p.isPingStackEmpty() {
 				p.Pingers.mtx.Lock()
 				for s, missed := range p.Pingers.Stack {
 					if missed < 2 {
 						p.Pingers.Stack[s]++
 						if p.Config.IsJSON {
-							s.Pool2SocketJSON <- Message{Type: 9}
+							s.Pool2SocketJSON <- Message{Type: websocket.PingMessage}
 						} else {
-							s.Pool2SocketBytes <- Message{Type: 9}
+							s.Pool2SocketBytes <- Message{Type: websocket.PingMessage}
 						}
 					} else {
-						delete(p.Pingers.Stack, s)
 						if s.IsReadable {
 							s.ShutdownRead <- struct{}{}
 						}
@@ -211,25 +223,6 @@ func (p *SocketPool) ControlPing() {
 				}
 				p.Pingers.mtx.Unlock()
 			}
-		}
-	}
-}
-
-// ControlPong runs an infinite loop to receive pong messages and register responses
-func (p *SocketPool) ControlPong() {
-	defer func() {
-		log.Printf("ControlPong goroutine was stopped at %v.\n\n", time.Now())
-	}()
-	log.Printf("ControlPong started.")
-
-	for {
-		select {
-		case <-p.Pipes.StopPongControl:
-			return
-		case s := <-p.Pipes.Pong:
-			p.Pingers.mtx.Lock()
-			p.Pingers.Stack[s]--
-			p.Pingers.mtx.Unlock()
 		}
 	}
 }
