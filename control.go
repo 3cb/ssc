@@ -17,7 +17,6 @@ func (p *SocketPool) Control() {
 
 	if p.Config.PingInterval > 0 && p.Config.IsReadable && p.Config.IsWritable {
 		go p.ControlPing()
-		go p.ControlPong()
 	}
 	if p.Config.PingInterval > 0 && !p.Config.IsReadable {
 		log.Print("Unable to start Ping/Pong control -- Cannot receive Pong messages from websockets that are not readable.")
@@ -34,23 +33,12 @@ func (p *SocketPool) ControlRead() {
 	}()
 	log.Printf("ControlRead started.")
 
-	if p.Config.IsJSON {
-		for {
-			select {
-			case <-p.Pipes.StopReadControl:
-				return
-			case v := <-p.Pipes.Socket2PoolJSON:
-				p.Pipes.OutboundJSON <- v
-			}
-		}
-	} else {
-		for {
-			select {
-			case <-p.Pipes.StopReadControl:
-				return
-			case v := <-p.Pipes.Socket2PoolBytes:
-				p.Pipes.OutboundBytes <- v
-			}
+	for {
+		select {
+		case <-p.Pipes.StopReadControl:
+			return
+		case msg := <-p.Pipes.Socket2Pool:
+			p.Pipes.Outbound <- msg
 		}
 	}
 }
@@ -61,35 +49,19 @@ func (p *SocketPool) ControlWrite() {
 		log.Printf("ControlWrite goroutine was stopped at %v.\n\n", time.Now())
 	}()
 	log.Printf("ControlWrite started.")
-	if p.Config.IsJSON {
-		for {
-			select {
-			case <-p.Pipes.StopWriteControl:
-				return
-			case v := <-p.Pipes.InboundJSON:
-				p.Writers.mtx.RLock()
-				for socket, open := range p.Writers.Stack {
-					if open {
-						socket.Pool2SocketJSON <- v
-					}
+
+	for {
+		select {
+		case <-p.Pipes.StopWriteControl:
+			return
+		case msg := <-p.Pipes.Inbound:
+			p.Writers.mtx.RLock()
+			for socket, open := range p.Writers.Stack {
+				if open {
+					socket.Pool2Socket <- msg
 				}
-				p.Writers.mtx.RUnlock()
 			}
-		}
-	} else {
-		for {
-			select {
-			case <-p.Pipes.StopWriteControl:
-				return
-			case v := <-p.Pipes.InboundBytes:
-				p.Writers.mtx.RLock()
-				for socket, open := range p.Writers.Stack {
-					if open {
-						socket.Pool2SocketBytes <- v
-					}
-				}
-				p.Writers.mtx.RUnlock()
-			}
+			p.Writers.mtx.RUnlock()
 		}
 	}
 }
@@ -194,13 +166,8 @@ func (p *SocketPool) ControlPing() {
 				for s, missed := range p.Pingers.Stack {
 					if missed < 2 {
 						p.Pingers.Stack[s]++
-						if p.Config.IsJSON {
-							s.Pool2SocketJSON <- Message{Type: 9}
-						} else {
-							s.Pool2SocketBytes <- Message{Type: 9}
-						}
+						s.Pool2Socket <- Message{Type: 9}
 					} else {
-						delete(p.Pingers.Stack, s)
 						if s.IsReadable {
 							s.ShutdownRead <- struct{}{}
 						}
@@ -211,25 +178,6 @@ func (p *SocketPool) ControlPing() {
 				}
 				p.Pingers.mtx.Unlock()
 			}
-		}
-	}
-}
-
-// ControlPong runs an infinite loop to receive pong messages and register responses
-func (p *SocketPool) ControlPong() {
-	defer func() {
-		log.Printf("ControlPong goroutine was stopped at %v.\n\n", time.Now())
-	}()
-	log.Printf("ControlPong started.")
-
-	for {
-		select {
-		case <-p.Pipes.StopPongControl:
-			return
-		case s := <-p.Pipes.Pong:
-			p.Pingers.mtx.Lock()
-			p.Pingers.Stack[s]--
-			p.Pingers.mtx.Unlock()
 		}
 	}
 }

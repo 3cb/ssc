@@ -49,20 +49,14 @@ type ClosedURLs struct {
 // Pipes contains data communication channels:
 // Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
-	// Inbound channels carry messages from caller application to WriteControl() method
-	InboundBytes chan Message
-	InboundJSON  chan JSONReaderWriter
+	// Inbound channel carries messages from caller application to WriteControl() method
+	Inbound chan Message
 
-	// Outbound channels carry messages from ReadControl() method to caller application
-	OutboundBytes chan Message
-	OutboundJSON  chan JSONReaderWriter
+	// Outbound channel carries messages from ReadControl() method to caller application
+	Outbound chan Message
 
-	// Socket2Pool channels carry messages from Read goroutines to ReadControl() method
-	Socket2PoolBytes chan Message
-	Socket2PoolJSON  chan JSONReaderWriter
-
-	// Pong carries Socket instance to ControlPong goroutine
-	Pong chan *Socket
+	// Socket2Pool channel carries messages from Read goroutines to ReadControl() method
+	Socket2Pool chan Message
 
 	// Stop channels are used to shutdown control goroutines
 	StopReadControl     chan struct{}
@@ -81,33 +75,21 @@ type Config struct {
 	ServerURLs   []string
 	IsReadable   bool
 	IsWritable   bool
-	IsJSON       bool // If false, messages will be read/written in bytes
-	DataJSON     JSONReaderWriter
 	PingInterval time.Duration //minimum of 30 seconds
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
-// If slice of urls is nil or empty SocketPool will be created and control methods will be launched and waiting
+// If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
 func NewSocketPool(config Config) (*SocketPool, error) {
 	if !config.IsReadable && !config.IsWritable {
 		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
 		return nil, err
 	}
-	if config.IsJSON && config.DataJSON == nil {
-		err := errors.New("if data type is JSON you must pass in values for DataJSON and JSON channels that implement JSONReaderWriter interface")
-		return nil, err
-	}
+
 	pipes := &Pipes{}
-	if config.IsJSON == true {
-		pipes.InboundJSON = make(chan JSONReaderWriter)
-		pipes.OutboundJSON = make(chan JSONReaderWriter)
-		pipes.Socket2PoolJSON = make(chan JSONReaderWriter)
-	} else {
-		pipes.InboundBytes = make(chan Message)
-		pipes.OutboundBytes = make(chan Message)
-		pipes.Socket2PoolBytes = make(chan Message)
-	}
-	pipes.Pong = make(chan *Socket)
+	pipes.Inbound = make(chan Message)
+	pipes.Outbound = make(chan Message)
+	pipes.Socket2Pool = make(chan Message)
 
 	pipes.StopReadControl = make(chan struct{})
 	pipes.StopWriteControl = make(chan struct{})
@@ -152,7 +134,7 @@ func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.Respon
 	if success {
 		return s, nil
 	}
-	return s, err
+	return nil, err
 }
 
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
