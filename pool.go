@@ -2,7 +2,6 @@ package ssc
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -15,6 +14,7 @@ import (
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type SocketPool struct {
+	Locked bool
 	Readers
 	Writers
 	Pingers
@@ -95,8 +95,8 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 	pipes.StopShutdownControl = make(chan struct{})
 	pipes.StopPingControl = make(chan struct{})
 
-	pipes.ErrorRead = make(chan ErrorMsg)
-	pipes.ErrorWrite = make(chan ErrorMsg)
+	pipes.ErrorRead = make(chan ErrorMsg, 100)
+	pipes.ErrorWrite = make(chan ErrorMsg, 100)
 
 	pool := &SocketPool{
 		Readers:    Readers{Stack: make(map[*Socket]bool)},
@@ -126,32 +126,30 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 
 // Drain shuts down all read and write goroutines as well as all control goroutines
 func (p *SocketPool) Drain() {
-	p.Readers.mtx.Lock()
+	p.Locked = true
+	p.Readers.mtx.RLock()
 	for s, active := range p.Readers.Stack {
+		println(s.URL)
 		if active {
 			s.ShutdownRead <- struct{}{}
 		}
 	}
-	p.Readers.mtx.Unlock()
+	p.Readers.mtx.RUnlock()
 
-	ticker := time.NewTicker(time.Second * 1)
-	for {
-		<-ticker.C
-		if len(p.Pingers.Stack) == 0 {
-			break
-		}
-		fmt.Printf("length of readers: %v", p.Readers.Stack)
-		fmt.Printf("length of writers: %v", p.Writers.Stack)
-	}
 	p.StopReadControl <- struct{}{}
 	p.StopWriteControl <- struct{}{}
 	p.StopShutdownControl <- struct{}{}
-	p.StopPingControl <- struct{}{}
+	if p.Config.PingInterval > 0 {
+		p.StopPingControl <- struct{}{}
+	}
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
+	if p.Locked {
+		return nil, errors.New("pool is locked. cannot add new websocket connection")
+	}
 	s := newSocketInstance("", p.Config)
 	success, err := s.connectClient(p, upgrader, w, r)
 	if success {
@@ -162,7 +160,10 @@ func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.Respon
 
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddServerSocket(url string) {
+func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
+	if p.Locked {
+		return nil, errors.New("pool is locked. cannot add new websocket connection")
+	}
 	s := newSocketInstance(url, p.Config)
 	success, err := s.connectServer(p)
 	if success {
@@ -170,6 +171,7 @@ func (p *SocketPool) AddServerSocket(url string) {
 	} else {
 		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
 	}
+	return s, nil
 }
 
 func (p *SocketPool) isPingStackEmpty() bool {

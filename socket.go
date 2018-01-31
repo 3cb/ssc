@@ -25,8 +25,8 @@ func newSocketInstance(url string, config Config) *Socket {
 		IsReadable:    config.IsReadable,
 		IsWritable:    config.IsWritable,
 		Pool2Socket:   make(chan Message),
-		ShutdownRead:  make(chan struct{}),
-		ShutdownWrite: make(chan struct{}),
+		ShutdownRead:  make(chan struct{}, 3),
+		ShutdownWrite: make(chan struct{}, 3),
 	}
 	return s
 }
