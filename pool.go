@@ -129,7 +129,6 @@ func (p *SocketPool) Drain() {
 	p.Locked = true
 	p.Readers.mtx.RLock()
 	for s, active := range p.Readers.Stack {
-		println(s.URL)
 		if active {
 			s.ShutdownRead <- struct{}{}
 		}
