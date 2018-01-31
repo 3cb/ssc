@@ -80,6 +80,4 @@ Shutdown Socket Pool and cleanup all running goroutines by using `pool.Drain()`.
 
 ## Work Left To Do
 
--> Rewrite Shutdown and Remove methods for SocketPool
-
 -> TESTS!
