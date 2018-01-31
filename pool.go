@@ -2,6 +2,7 @@ package ssc
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -47,7 +48,6 @@ type ClosedURLs struct {
 }
 
 // Pipes contains data communication channels:
-// Error channel carries websocket error messages from goroutines back to pool controller
 type Pipes struct {
 	// Inbound channel carries messages from caller application to WriteControl() method
 	Inbound chan Message
@@ -63,7 +63,6 @@ type Pipes struct {
 	StopWriteControl    chan struct{}
 	StopShutdownControl chan struct{}
 	StopPingControl     chan struct{}
-	StopPongControl     chan struct{}
 
 	// Error channels carry messages from read/write goroutines to ControlShutdown() goroutine
 	ErrorRead  chan ErrorMsg
@@ -95,7 +94,6 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 	pipes.StopWriteControl = make(chan struct{})
 	pipes.StopShutdownControl = make(chan struct{})
 	pipes.StopPingControl = make(chan struct{})
-	pipes.StopPongControl = make(chan struct{})
 
 	pipes.ErrorRead = make(chan ErrorMsg)
 	pipes.ErrorWrite = make(chan ErrorMsg)
@@ -124,6 +122,31 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 	}
 
 	return pool, nil
+}
+
+// Drain shuts down all read and write goroutines as well as all control goroutines
+func (p *SocketPool) Drain() {
+	p.Readers.mtx.Lock()
+	for s, active := range p.Readers.Stack {
+		if active {
+			s.ShutdownRead <- struct{}{}
+		}
+	}
+	p.Readers.mtx.Unlock()
+
+	ticker := time.NewTicker(time.Second * 1)
+	for {
+		<-ticker.C
+		if len(p.Pingers.Stack) == 0 {
+			break
+		}
+		fmt.Printf("length of readers: %v", p.Readers.Stack)
+		fmt.Printf("length of writers: %v", p.Writers.Stack)
+	}
+	p.StopReadControl <- struct{}{}
+	p.StopWriteControl <- struct{}{}
+	p.StopShutdownControl <- struct{}{}
+	p.StopPingControl <- struct{}{}
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
