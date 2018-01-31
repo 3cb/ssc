@@ -3,6 +3,7 @@ package ssc
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -24,14 +25,16 @@ func (p *SocketPool) Control() {
 
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) controlRead() {
+	wg := &sync.WaitGroup{}
 	defer func() {
 		log.Printf("ControlRead goroutine was stopped at %v.", time.Now())
+		wg.Done()
 	}()
 	log.Printf("ControlRead started.")
 
 	for {
 		select {
-		case <-p.Pipes.StopReadControl:
+		case wg = <-p.Pipes.StopReadControl:
 			return
 		case msg := <-p.Pipes.Socket2Pool:
 			p.Pipes.Outbound <- msg
@@ -41,14 +44,16 @@ func (p *SocketPool) controlRead() {
 
 // controlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) controlWrite() {
+	wg := &sync.WaitGroup{}
 	defer func() {
 		log.Printf("ControlWrite goroutine was stopped at %v.", time.Now())
+		wg.Done()
 	}()
 	log.Printf("ControlWrite started.")
 
 	for {
 		select {
-		case <-p.Pipes.StopWriteControl:
+		case wg = <-p.Pipes.StopWriteControl:
 			return
 		case msg := <-p.Pipes.Inbound:
 			p.Writers.mtx.RLock()
@@ -64,14 +69,16 @@ func (p *SocketPool) controlWrite() {
 
 // controlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) controlShutdown() {
+	wg := &sync.WaitGroup{}
 	defer func() {
 		log.Printf("ControlShutdown goroutine was stopped at %v.", time.Now())
+		wg.Done()
 	}()
 	log.Printf("ControlShutdown started.")
 
 	for {
 		select {
-		case <-p.Pipes.StopShutdownControl:
+		case wg = <-p.Pipes.StopShutdownControl:
 			return
 		case e := <-p.Pipes.ErrorRead:
 			s := e.Socket
@@ -151,8 +158,10 @@ func (p *SocketPool) controlShutdown() {
 
 // controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined in Config
 func (p *SocketPool) controlPing() {
+	wg := &sync.WaitGroup{}
 	defer func() {
 		log.Printf("ControlPing goroutine was stopped at %v.", time.Now())
+		wg.Done()
 	}()
 	log.Printf("ControlPing started.")
 
@@ -166,7 +175,7 @@ func (p *SocketPool) controlPing() {
 
 	for {
 		select {
-		case <-p.Pipes.StopPingControl:
+		case wg = <-p.Pipes.StopPingControl:
 			return
 		case <-ticker.C:
 			if !p.isPingStackEmpty() {

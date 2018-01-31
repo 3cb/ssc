@@ -59,10 +59,10 @@ type Pipes struct {
 	Socket2Pool chan Message
 
 	// Stop channels are used to shutdown control goroutines
-	StopReadControl     chan struct{}
-	StopWriteControl    chan struct{}
-	StopShutdownControl chan struct{}
-	StopPingControl     chan struct{}
+	StopReadControl     chan *sync.WaitGroup
+	StopWriteControl    chan *sync.WaitGroup
+	StopShutdownControl chan *sync.WaitGroup
+	StopPingControl     chan *sync.WaitGroup
 
 	// Error channels carry messages from read/write goroutines to ControlShutdown() goroutine
 	ErrorRead  chan ErrorMsg
@@ -90,10 +90,10 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 	pipes.Outbound = make(chan Message)
 	pipes.Socket2Pool = make(chan Message)
 
-	pipes.StopReadControl = make(chan struct{})
-	pipes.StopWriteControl = make(chan struct{})
-	pipes.StopShutdownControl = make(chan struct{})
-	pipes.StopPingControl = make(chan struct{})
+	pipes.StopReadControl = make(chan *sync.WaitGroup)
+	pipes.StopWriteControl = make(chan *sync.WaitGroup)
+	pipes.StopShutdownControl = make(chan *sync.WaitGroup)
+	pipes.StopPingControl = make(chan *sync.WaitGroup)
 
 	pipes.ErrorRead = make(chan ErrorMsg, 100)
 	pipes.ErrorWrite = make(chan ErrorMsg, 100)
@@ -107,7 +107,7 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 		Config:     config,
 	}
 
-	go pool.Control()
+	pool.Control()
 
 	if len(config.ServerURLs) > 0 {
 		for _, url := range config.ServerURLs {
@@ -135,12 +135,21 @@ func (p *SocketPool) Drain() {
 	}
 	p.Readers.mtx.RUnlock()
 
-	p.StopReadControl <- struct{}{}
-	p.StopWriteControl <- struct{}{}
-	p.StopShutdownControl <- struct{}{}
+	wg := &sync.WaitGroup{}
+	var count int
 	if p.Config.PingInterval > 0 {
-		p.StopPingControl <- struct{}{}
+		count = 1
+	} else {
+		count = 0
 	}
+	wg.Add(3 + count)
+	p.StopReadControl <- wg
+	p.StopWriteControl <- wg
+	p.StopShutdownControl <- wg
+	if p.Config.PingInterval > 0 {
+		p.StopPingControl <- wg
+	}
+	wg.Wait()
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
