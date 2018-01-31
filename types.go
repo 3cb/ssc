@@ -6,7 +6,8 @@ type ErrorMsg struct {
 	Error  error
 }
 
-// Message wraps message type and []bytetogether so sender/receiver can identify the target/source respectively
+// Message contains type and payload as a normal websocket message
+// URL is added in case user needs to identify source (websocket server)
 type Message struct {
 	Type    int
 	Payload []byte

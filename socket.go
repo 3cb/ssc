@@ -31,7 +31,7 @@ func newSocketInstance(url string, config Config) *Socket {
 	return s
 }
 
-// ConnectClient connects to a websocket using websocket.Upgrade() method and starts goroutine/s for read and/or write
+// connectClient connects to a websocket using websocket.Upgrade() method and starts goroutine/s for read and/or write
 func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -76,8 +76,7 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	return true, nil
 }
 
-// ConnectServer connects to websocket given a url string and config struct from SocketPool.
-// Creates a goroutine to receive and send data as well as to listen for errors and calls to shutdown
+// connectServer connects to websocket given a url string and config struct from SocketPool.
 func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
 	if resp.StatusCode != 101 || err != nil {
@@ -120,7 +119,7 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 	return true, nil
 }
 
-// ReadSocketBytes runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
+// readSocket runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
 func (s *Socket) readSocket(pipes *Pipes) {
 	defer func() {
@@ -144,7 +143,7 @@ func (s *Socket) readSocket(pipes *Pipes) {
 	}
 }
 
-// WriteSocketBytes runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
+// writeSocket runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
 func (s *Socket) writeSocket(pipes *Pipes) {
 	defer func() {
