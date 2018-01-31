@@ -26,90 +26,60 @@ sockets := []string{
     "wss://api.example.com/ws3",
 }
 
-config := ssc.PoolConfig{
+config := ssc.Config{
         ServerURLs: sockets,
 	IsReadable: true,
 	IsWritable: true,
-	IsJSON: false,    // If false, messages will be read/written in bytes
-	DataJSON: DataType{},
-	PingInterval: time.Second*45  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
+	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
 }
 
-pool, err := ssc.NewSocketPool(sockets, config)
+pool, err := ssc.NewSocketPool(config)
 if err != nil {
     log.Printf("Error starting new Socket Pool.")
 	return
 }
 ```
-
-The above example will create goroutines that read and write in bytes.  In order to read and write with JSON the caller has to set the `IsJSON` field of the config object to `true` and set the `DataJSON` field of the config object to an empty instance of a data structure that satisfies the `ssc.JSONReaderWriter` interface:
-
+The above example starts a pool of websocket server connections.  In order to start and empty pool ready for client websockets to connect, use config object without a slice of url strings:
 ```go
-type JSONReaderWriter interface {
-	ReadJSON(s *Socket, b []byte, Socket2PoolJSON chan<- JSONReaderWriter) error
-	WriteJSON(s *Socket) error
+config := ssc.Config{
+	IsReadable: true,
+	IsWritable: true,
+	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
+}
+
+pool, err := ssc.NewSocketPool(config)
+if err != nil {
+    log.Printf("Error starting new Socket Pool.")
+	return
 }
 ```
+To add individual client connections call `pool.AddClientSocket()` from a route handler:
 
-An example of this can be seen in the "go_stream" branch:
-https://github.com/3cb/gemini_clone/blob/go_stream/types/types.go
-
-Data type with methods that implement JSONReaderWriter interface:
 ```go
-type Message struct {
-	Type      string  `json:"type"`
-	Product   string  `json:"product"`
-	EventID   int     `json:"eventId"`
-	Sequence  int     `json:"socket_sequence"`
-	Events    []Event `json:"events"`
-	Timestamp int     `json:"timestampms"`
+func main() {
+	r := mux.NewRouter()	// gorilla mux package
+
+	upgrader := &websocket.Upgrader{}	// gorilla websocket package
+	r.Handle("/". wsHandler(pool, upgrader))
+
+	log.Fatal(http.ListenAndServe(":3000", r))
 }
 
-type Event struct {
-	Type      string `json:"type"`
-	Reason    string `json:"reason"`
-	Price     string `json:"price"`
-	Delta     string `json:"delta"`
-	Remaining string `json:"remaining"`
-	Side      string `json:"side"`
-
-	TID       int64  `json:"tid"`
-	Amount    string `json:"amount"`
-	MakerSide string `json:"makerSide"`
-}
-
-func (m Message) WriteJSON(s *ssc.Socket) error {
-	err := s.Connection.WriteJSON(m)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m Message) ReadJSON(s *ssc.Socket, b []byte, Socket2PoolJSON chan<- ssc.JSONReaderWriter) error {
-	err := json.Unmarshal(b, &m)
-	if err != nil {
-		return err
-	}
-
-	slice := strings.Split(s.URL, "/")
-	m.Product = slice[len(slice)-1]
-
-	Socket2PoolJSON <- m
-
-	return nil
+func wsHandler(pool *ssc.SocketPool, upgrader *websocket.Upgrader) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		socket, err := pool.AddClientSocket(upgrader, w, r)	// can usually ignore socket with an _
+		if err != nil {
+			// handle error
+		}
+		// do other stuff
+	})
 }
 ```
+Shutdown Socket Pool and cleanup all running goroutines by using `pool.Drain()`.
 
 
 ## Work Left To Do
 
--> Add ping/pong for server connections
-
--> Update comments
-
 -> Rewrite Shutdown and Remove methods for SocketPool
-
--> Update this README!
 
 -> TESTS!
