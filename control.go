@@ -8,24 +8,24 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Control method launches ControlShutdown(), ControlRead(), and ControlWrite()
+// Control method launches ControlShutdown(), ControlRead(), ControlWrite(), and ControlPing()
 func (p *SocketPool) Control() {
-	go p.ControlShutdown()
+	go p.controlShutdown()
 	if p.Config.IsReadable {
-		go p.ControlRead()
+		go p.controlRead()
 	}
 	if p.Config.IsWritable {
-		go p.ControlWrite()
+		go p.controlWrite()
 	}
 	if p.Config.PingInterval > 0 {
-		go p.ControlPing()
+		go p.controlPing()
 	}
 }
 
-// ControlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
-func (p *SocketPool) ControlRead() {
+// controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
+func (p *SocketPool) controlRead() {
 	defer func() {
-		log.Printf("ControlRead goroutine was stopped at %v.\n\n", time.Now())
+		log.Printf("ControlRead goroutine was stopped at %v.", time.Now())
 	}()
 	log.Printf("ControlRead started.")
 
@@ -39,10 +39,10 @@ func (p *SocketPool) ControlRead() {
 	}
 }
 
-// ControlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
-func (p *SocketPool) ControlWrite() {
+// controlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
+func (p *SocketPool) controlWrite() {
 	defer func() {
-		log.Printf("ControlWrite goroutine was stopped at %v.\n\n", time.Now())
+		log.Printf("ControlWrite goroutine was stopped at %v.", time.Now())
 	}()
 	log.Printf("ControlWrite started.")
 
@@ -62,10 +62,10 @@ func (p *SocketPool) ControlWrite() {
 	}
 }
 
-// ControlShutdown method listens for Error Messages and dispatches shutdown messages
-func (p *SocketPool) ControlShutdown() {
+// controlShutdown method listens for Error Messages and dispatches shutdown messages
+func (p *SocketPool) controlShutdown() {
 	defer func() {
-		log.Printf("ControlShutdown goroutine was stopped at %v.\n\n", time.Now())
+		log.Printf("ControlShutdown goroutine was stopped at %v.", time.Now())
 	}()
 	log.Printf("ControlShutdown started.")
 
@@ -149,10 +149,10 @@ func (p *SocketPool) ControlShutdown() {
 	}
 }
 
-// ControlPing runs an infinite loop to send pings messages to websocket write goroutines at an interval defined in Config
-func (p *SocketPool) ControlPing() {
+// controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined in Config
+func (p *SocketPool) controlPing() {
 	defer func() {
-		log.Printf("ControlPing goroutine was stopped at %v.\n\n", time.Now())
+		log.Printf("ControlPing goroutine was stopped at %v.", time.Now())
 	}()
 	log.Printf("ControlPing started.")
 
