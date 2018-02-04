@@ -14,7 +14,7 @@ To install the package on your system:
 ```bash
 go get "github.com/3cb/ssc"
 ```
-![Diagram](https://github.com/3cb/ssc/diagram.png)
+![Diagram](https://github.com/3cb/ssc/blob/master/diagram.png)
 
 ## Example Usage
 
