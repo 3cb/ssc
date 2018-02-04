@@ -14,6 +14,8 @@ To install the package on your system:
 ```bash
 go get "github.com/3cb/ssc"
 ```
+## SocketPool Layout
+
 ![Diagram](https://github.com/3cb/ssc/blob/master/diagram.png)
 
 ## Example Usage
