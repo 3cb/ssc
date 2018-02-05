@@ -17,6 +17,7 @@ go get "github.com/3cb/ssc"
 ## SocketPool Layout
 Each WebSocket has its own readSocket and writeSocket goroutine but there is only one instance of each control goroutine per SocketPool:
 
+
 ![Diagram](https://github.com/3cb/ssc/blob/master/diagram.png)
 
 ## Example Usage
