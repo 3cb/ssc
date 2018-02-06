@@ -1,3 +1,4 @@
+// Package ssc creates and controls pools of websocket connections --  client and server
 package ssc
 
 import (

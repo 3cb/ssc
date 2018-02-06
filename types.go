@@ -1,3 +1,4 @@
+// Package ssc creates and controls pools of websocket connections --  client and server
 package ssc
 
 // ErrorMsg wraps an error message with Socket instance so receiver can try reconnect and/or log error
