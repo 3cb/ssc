@@ -43,7 +43,7 @@ if err != nil {
 	return
 }
 ```
-The above example starts a pool of websocket server connections.  In order to start and empty pool ready for client websockets to connect, use config object without a slice of url strings:
+The above example starts a pool of websocket server connections.  In order to start an empty pool which is ready for client websockets to connect, use a config object without a slice of url strings:
 ```go
 config := ssc.Config{
 	IsReadable: true,
@@ -79,8 +79,11 @@ func wsHandler(pool *ssc.SocketPool, upgrader *websocket.Upgrader) http.Handler 
 	})
 }
 ```
-Shutdown Socket Pool and cleanup all running goroutines by using `pool.Drain()`.
+Shutdown Socket Pool and cleanup all running goroutines by using `pool.Drain()`.  This method will shutdown all read/write goroutines and then shut down all control goroutines that are running.
 
+Usage for server WebSockets here: https://github.com/3cb/gemini_clone/tree/go_stream
+
+Usage for client WebSockets here: https://github.com/3cb/seattle911 and here: https://github.com/3cb/melbourne_parking
 
 ## Work Left To Do
 
