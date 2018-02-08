@@ -12,5 +12,5 @@ type ErrorMsg struct {
 type Message struct {
 	Type    int
 	Payload []byte
-	URL     string
+	ID      string
 }

@@ -139,7 +139,7 @@ func (s *Socket) readSocket(pipes *Pipes) {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			pipes.Socket2Pool <- Message{Type: msgType, Payload: msg, URL: s.ID}
+			pipes.Socket2Pool <- Message{Type: msgType, Payload: msg, ID: s.ID}
 		}
 	}
 }
