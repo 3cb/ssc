@@ -11,7 +11,7 @@ import (
 // Socket type defines a websocket connection along with configuration and channels used to run read and write goroutines
 type Socket struct {
 	Connection    *websocket.Conn
-	URL           string
+	ID            string
 	IsReadable    bool
 	IsWritable    bool
 	Pool2Socket   chan Message
@@ -22,7 +22,7 @@ type Socket struct {
 // NewSocketInstance returns a new instance of a Socket
 func newSocketInstance(url string, config Config) *Socket {
 	s := &Socket{
-		URL:           url,
+		ID:            url,
 		IsReadable:    config.IsReadable,
 		IsWritable:    config.IsWritable,
 		Pool2Socket:   make(chan Message),
@@ -79,7 +79,7 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 
 // connectServer connects to websocket given a url string and config struct from SocketPool.
 func (s *Socket) connectServer(p *SocketPool) (bool, error) {
-	c, resp, err := websocket.DefaultDialer.Dial(s.URL, nil)
+	c, resp, err := websocket.DefaultDialer.Dial(s.ID, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
 	}
@@ -139,7 +139,7 @@ func (s *Socket) readSocket(pipes *Pipes) {
 				pipes.ErrorRead <- ErrorMsg{s, err}
 				return
 			}
-			pipes.Socket2Pool <- Message{Type: msgType, Payload: msg, URL: s.URL}
+			pipes.Socket2Pool <- Message{Type: msgType, Payload: msg, URL: s.ID}
 		}
 	}
 }

@@ -93,9 +93,9 @@ func (p *SocketPool) controlShutdown() {
 				s.ShutdownWrite <- struct{}{}
 			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
 				p.Readers.Stack[s] = false
-				if len(s.URL) > 0 {
+				if len(s.ID) > 0 {
 					p.ClosedURLs.mtx.Lock()
-					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.Stack[s.ID] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
 				delete(p.Readers.Stack, s)
@@ -105,9 +105,9 @@ func (p *SocketPool) controlShutdown() {
 				delete(p.Pingers.Stack, s)
 				s.ShutdownWrite <- struct{}{}
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				if len(s.URL) > 0 {
+				if len(s.ID) > 0 {
 					p.ClosedURLs.mtx.Lock()
-					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.Stack[s.ID] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
 				delete(p.Readers.Stack, s)
@@ -132,18 +132,18 @@ func (p *SocketPool) controlShutdown() {
 				s.ShutdownRead <- struct{}{}
 			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
 				p.Writers.Stack[s] = false
-				if len(s.URL) > 0 {
+				if len(s.ID) > 0 {
 					p.ClosedURLs.mtx.Lock()
-					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.Stack[s.ID] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
 				delete(p.Readers.Stack, s)
 				delete(p.Writers.Stack, s)
 				delete(p.Pingers.Stack, s)
 			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				if len(s.URL) > 0 {
+				if len(s.ID) > 0 {
 					p.ClosedURLs.mtx.Lock()
-					p.ClosedURLs.Stack[s.URL] = true
+					p.ClosedURLs.Stack[s.ID] = true
 					p.ClosedURLs.mtx.Unlock()
 				}
 				delete(p.Readers.Stack, s)
