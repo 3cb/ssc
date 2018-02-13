@@ -4,7 +4,6 @@ package ssc
 import (
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,16 +21,15 @@ func (p *SocketPool) Control() {
 
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) controlRead() {
-	wg := &sync.WaitGroup{}
 	defer func() {
-		log.Printf("ControlRead goroutine was stopped at %v.", time.Now())
-		wg.Done()
+		log.Printf("ControlRead goroutine was stopped at %v\n", time.Now())
 	}()
-	log.Printf("ControlRead started.")
+	log.Printf("ControlRead started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg = <-p.Pipes.StopReadControl:
+		case wg := <-p.Pipes.StopReadControl:
+			wg.Done()
 			return
 		case msg := <-p.Pipes.Socket2Pool:
 			p.Pipes.Outbound <- msg
@@ -41,16 +39,15 @@ func (p *SocketPool) controlRead() {
 
 // controlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) controlWrite() {
-	wg := &sync.WaitGroup{}
 	defer func() {
-		log.Printf("ControlWrite goroutine was stopped at %v.", time.Now())
-		wg.Done()
+		log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 	}()
-	log.Printf("ControlWrite started.")
+	log.Printf("ControlWrite started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg = <-p.Pipes.StopWriteControl:
+		case wg := <-p.Pipes.StopWriteControl:
+			wg.Done()
 			return
 		case msg := <-p.Pipes.Inbound:
 			p.Writers.mtx.RLock()
@@ -66,16 +63,15 @@ func (p *SocketPool) controlWrite() {
 
 // controlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) controlShutdown() {
-	wg := &sync.WaitGroup{}
 	defer func() {
-		log.Printf("ControlShutdown goroutine was stopped at %v.", time.Now())
-		wg.Done()
+		log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
 	}()
-	log.Printf("ControlShutdown started.")
+	log.Printf("ControlShutdown started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg = <-p.Pipes.StopShutdownControl:
+		case wg := <-p.Pipes.StopShutdownControl:
+			wg.Done()
 			return
 		case e := <-p.Pipes.Error:
 			s := e.Socket
@@ -93,9 +89,9 @@ func (p *SocketPool) controlShutdown() {
 			p.Pingers.mtx.Unlock()
 
 			if e.Error != nil {
-				fmt.Printf("\nSocket ID: %v\nClosed due to error: %s\n", s.ID, e.Error)
+				fmt.Printf("\nSocket ID: %v\nClosed due to error: %s\nTime: %v\n", s.ID, e.Error, time.Now())
 			} else {
-				fmt.Printf("\nSocket ID: %v\nClosed due to quit quit signal.\n", s.ID)
+				fmt.Printf("\nSocket ID: %v\nClosed due to quit quit signal.\nTime: %v\n", s.ID, time.Now())
 			}
 		}
 	}
@@ -103,12 +99,10 @@ func (p *SocketPool) controlShutdown() {
 
 // controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined in Config
 func (p *SocketPool) controlPing() {
-	wg := &sync.WaitGroup{}
 	defer func() {
-		log.Printf("ControlPing goroutine was stopped at %v.", time.Now())
-		wg.Done()
+		log.Printf("ControlPing goroutine was stopped at %v\n", time.Now())
 	}()
-	log.Printf("ControlPing started.")
+	log.Printf("ControlPing started at %v\n", time.Now())
 
 	var t time.Duration
 	if p.PingInterval < (time.Second * 30) {
@@ -120,7 +114,8 @@ func (p *SocketPool) controlPing() {
 
 	for {
 		select {
-		case wg = <-p.Pipes.StopPingControl:
+		case wg := <-p.Pipes.StopPingControl:
+			wg.Done()
 			return
 		case <-ticker.C:
 			if !p.isPingStackEmpty() {
