@@ -10,7 +10,7 @@ type ErrorMsg struct {
 // Message contains type and payload as a normal websocket message
 // URL is added in case user needs to identify source (websocket server)
 type Message struct {
+	ID      string
 	Type    int
 	Payload []byte
-	ID      string
 }
