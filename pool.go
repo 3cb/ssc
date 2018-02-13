@@ -19,7 +19,6 @@ type SocketPool struct {
 	Readers
 	Writers
 	Pingers
-	ClosedURLs
 	*Pipes
 
 	// These fields are set during initialization
@@ -90,11 +89,10 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 	pipes.ErrorWrite = make(chan ErrorMsg, 100)
 
 	pool := &SocketPool{
-		Readers:    Readers{Stack: make(map[*Socket]bool)},
-		Writers:    Writers{Stack: make(map[*Socket]bool)},
-		Pingers:    Pingers{Stack: make(map[*Socket]int)},
-		ClosedURLs: ClosedURLs{Stack: make(map[string]bool)},
-		Pipes:      pipes,
+		Readers: Readers{Stack: make(map[*Socket]bool)},
+		Writers: Writers{Stack: make(map[*Socket]bool)},
+		Pingers: Pingers{Stack: make(map[*Socket]int)},
+		Pipes:   pipes,
 
 		ServerURLs:   urls,
 		PingInterval: pingInt,
