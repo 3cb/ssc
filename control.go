@@ -13,13 +13,9 @@ import (
 // Control method launches ControlShutdown(), ControlRead(), ControlWrite(), and ControlPing()
 func (p *SocketPool) Control() {
 	go p.controlShutdown()
-	if p.Config.IsReadable {
-		go p.controlRead()
-	}
-	if p.Config.IsWritable {
-		go p.controlWrite()
-	}
-	if p.Config.PingInterval > 0 {
+	go p.controlRead()
+	go p.controlWrite()
+	if p.PingInterval > 0 {
 		go p.controlPing()
 	}
 }
@@ -167,10 +163,10 @@ func (p *SocketPool) controlPing() {
 	log.Printf("ControlPing started.")
 
 	var t time.Duration
-	if p.Config.PingInterval < (time.Second * 30) {
+	if p.PingInterval < (time.Second * 30) {
 		t = time.Second * 30
 	} else {
-		t = p.Config.PingInterval
+		t = p.PingInterval
 	}
 	ticker := time.NewTicker(t)
 
@@ -187,12 +183,8 @@ func (p *SocketPool) controlPing() {
 						p.Pingers.Stack[s]++
 						s.Pool2Socket <- Message{Type: websocket.PingMessage}
 					} else {
-						if s.IsReadable {
-							s.ShutdownRead <- struct{}{}
-						}
-						if s.IsWritable {
-							s.ShutdownWrite <- struct{}{}
-						}
+						s.ShutdownRead <- struct{}{}
+						s.ShutdownWrite <- struct{}{}
 					}
 				}
 				p.Pingers.mtx.Unlock()

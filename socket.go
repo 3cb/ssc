@@ -12,19 +12,15 @@ import (
 type Socket struct {
 	Connection    *websocket.Conn
 	ID            string
-	IsReadable    bool
-	IsWritable    bool
 	Pool2Socket   chan Message
 	ShutdownRead  chan struct{}
 	ShutdownWrite chan struct{}
 }
 
 // NewSocketInstance returns a new instance of a Socket
-func newSocketInstance(url string, config Config) *Socket {
+func newSocketInstance(url string) *Socket {
 	s := &Socket{
 		ID:            url,
-		IsReadable:    config.IsReadable,
-		IsWritable:    config.IsWritable,
 		Pool2Socket:   make(chan Message),
 		ShutdownRead:  make(chan struct{}, 3),
 		ShutdownWrite: make(chan struct{}, 3),
@@ -32,7 +28,7 @@ func newSocketInstance(url string, config Config) *Socket {
 	return s
 }
 
-// connectClient connects to a websocket using websocket.Upgrade() method and starts goroutine/s for read and/or write
+// connectClient connects to a websocket using websocket.Upgrader.Upgrade() method and starts goroutine/s for read and write
 func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -52,23 +48,16 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	})
 
 	p.Readers.mtx.Lock()
-	if s.IsReadable {
-		go s.readSocket(p.Pipes)
-		p.Readers.Stack[s] = true
-	} else {
-		p.Readers.Stack[s] = false
-	}
+	go s.readSocket(p.Pipes)
+	p.Readers.Stack[s] = true
 	p.Readers.mtx.Unlock()
+
 	p.Writers.mtx.Lock()
-	if s.IsWritable {
-		go s.writeSocket(p.Pipes)
-		p.Writers.Stack[s] = true
-	} else {
-		p.Writers.Stack[s] = false
-	}
+	go s.writeSocket(p.Pipes)
+	p.Writers.Stack[s] = true
 	p.Writers.mtx.Unlock()
 
-	if p.Config.PingInterval > 0 {
+	if p.PingInterval > 0 {
 		p.Pingers.mtx.Lock()
 		p.Pingers.Stack[s] = 0
 		p.Pingers.mtx.Unlock()
@@ -77,7 +66,8 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	return true, nil
 }
 
-// connectServer connects to websocket given a url string and config struct from SocketPool.
+// connectServer connects to websocket given a url string from SocketPool.
+// starts goroutines for read and write
 func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.ID, nil)
 	if resp.StatusCode != 101 || err != nil {
@@ -95,23 +85,16 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 	})
 
 	p.Readers.mtx.Lock()
-	if s.IsReadable {
-		go s.readSocket(p.Pipes)
-		p.Readers.Stack[s] = true
-	} else {
-		p.Readers.Stack[s] = false
-	}
+	go s.readSocket(p.Pipes)
+	p.Readers.Stack[s] = true
 	p.Readers.mtx.Unlock()
+
 	p.Writers.mtx.Lock()
-	if s.IsWritable {
-		go s.writeSocket(p.Pipes)
-		p.Writers.Stack[s] = true
-	} else {
-		p.Writers.Stack[s] = false
-	}
+	go s.writeSocket(p.Pipes)
+	p.Writers.Stack[s] = true
 	p.Writers.mtx.Unlock()
 
-	if p.Config.PingInterval > 0 {
+	if p.PingInterval > 0 {
 		p.Pingers.mtx.Lock()
 		p.Pingers.Stack[s] = 0
 		p.Pingers.mtx.Unlock()
