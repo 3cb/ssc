@@ -10,20 +10,22 @@ import (
 
 // Socket type defines a websocket connection along with configuration and channels used to run read and write goroutines
 type Socket struct {
-	Connection    *websocket.Conn
-	ID            string
-	Pool2Socket   chan Message
-	ShutdownRead  chan struct{}
-	ShutdownWrite chan struct{}
+	Connection  *websocket.Conn
+	ID          string
+	Pool2Socket chan Message
+	Quit        chan struct{}
+	R2W         chan struct{}
+	W2R         chan struct{}
 }
 
 // NewSocketInstance returns a new instance of a Socket
 func newSocketInstance(url string) *Socket {
 	s := &Socket{
-		ID:            url,
-		Pool2Socket:   make(chan Message),
-		ShutdownRead:  make(chan struct{}, 3),
-		ShutdownWrite: make(chan struct{}, 3),
+		ID:          url,
+		Pool2Socket: make(chan Message),
+		Quit:        make(chan struct{}),
+		R2W:         make(chan struct{}),
+		W2R:         make(chan struct{}),
 	}
 	return s
 }
@@ -106,23 +108,24 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 // readSocket runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
 func (s *Socket) readSocket(pipes *Pipes) {
-	defer func() {
-		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		s.Connection.Close()
-	}()
-
 	for {
 		select {
-		case <-s.ShutdownRead:
-			pipes.ErrorRead <- ErrorMsg{s, nil}
+		case <-s.W2R:
+			return
+		case <-s.Quit:
+			s.R2W <- struct{}{}
+			s.closeSocket()
+			pipes.Error <- ErrorMsg{s, nil}
 			return
 		default:
 			msgType, msg, err := s.Connection.ReadMessage()
 			if err != nil {
-				pipes.ErrorRead <- ErrorMsg{s, err}
+				s.R2W <- struct{}{}
+				s.closeSocket()
+				pipes.Error <- ErrorMsg{s, err}
 				return
 			}
-			pipes.Socket2Pool <- Message{Type: msgType, Payload: msg, ID: s.ID}
+			pipes.Socket2Pool <- Message{ID: s.ID, Type: msgType, Payload: msg}
 		}
 	}
 }
@@ -130,22 +133,31 @@ func (s *Socket) readSocket(pipes *Pipes) {
 // writeSocket runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
 func (s *Socket) writeSocket(pipes *Pipes) {
-	defer func() {
-		_ = s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		s.Connection.Close()
-	}()
-
 	for {
 		select {
-		case <-s.ShutdownWrite:
-			pipes.ErrorWrite <- ErrorMsg{s, nil}
+		case <-s.R2W:
+			return
+		case <-s.Quit:
+			s.W2R <- struct{}{}
+			s.closeSocket()
+			pipes.Error <- ErrorMsg{s, nil}
 			return
 		case msg := <-s.Pool2Socket:
 			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
-				pipes.ErrorWrite <- ErrorMsg{s, err}
+				s.W2R <- struct{}{}
+				s.closeSocket()
+				pipes.Error <- ErrorMsg{s, err}
 				return
 			}
 		}
+	}
+}
+
+// closeSocket closes the websocket connection
+func (s *Socket) closeSocket() {
+	err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err != nil {
+		s.Connection.Close()
 	}
 }

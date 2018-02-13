@@ -77,58 +77,26 @@ func (p *SocketPool) controlShutdown() {
 		select {
 		case wg = <-p.Pipes.StopShutdownControl:
 			return
-		case e := <-p.Pipes.ErrorRead:
+		case e := <-p.Pipes.Error:
 			s := e.Socket
+
 			p.Readers.mtx.Lock()
-			p.Writers.mtx.Lock()
-			p.Pingers.mtx.Lock()
-			switch {
-			case p.Readers.Stack[s] && p.Writers.Stack[s]:
-				p.Readers.Stack[s] = false
-				delete(p.Pingers.Stack, s)
-				s.ShutdownWrite <- struct{}{}
-			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				p.Readers.Stack[s] = false
-				delete(p.Readers.Stack, s)
-				delete(p.Writers.Stack, s)
-				delete(p.Pingers.Stack, s)
-			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
-				delete(p.Pingers.Stack, s)
-				s.ShutdownWrite <- struct{}{}
-			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				delete(p.Readers.Stack, s)
-				delete(p.Writers.Stack, s)
-				delete(p.Pingers.Stack, s)
-			}
+			delete(p.Readers.Stack, s)
 			p.Readers.mtx.Unlock()
-			p.Writers.mtx.Unlock()
-			p.Pingers.mtx.Unlock()
-		case e := <-p.Pipes.ErrorWrite:
-			s := e.Socket
-			p.Readers.mtx.Lock()
+
 			p.Writers.mtx.Lock()
-			p.Pingers.mtx.Lock()
-			switch {
-			case p.Readers.Stack[s] && p.Writers.Stack[s]:
-				p.Writers.Stack[s] = false
-				delete(p.Pingers.Stack, s)
-				s.ShutdownRead <- struct{}{}
-			case p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				delete(p.Pingers.Stack, s)
-				s.ShutdownRead <- struct{}{}
-			case !p.Readers.Stack[s] && p.Writers.Stack[s]:
-				p.Writers.Stack[s] = false
-				delete(p.Readers.Stack, s)
-				delete(p.Writers.Stack, s)
-				delete(p.Pingers.Stack, s)
-			case !p.Readers.Stack[s] && !p.Writers.Stack[s]:
-				delete(p.Readers.Stack, s)
-				delete(p.Writers.Stack, s)
-				delete(p.Pingers.Stack, s)
-			}
-			p.Readers.mtx.Unlock()
+			delete(p.Writers.Stack, s)
 			p.Writers.mtx.Unlock()
+
+			p.Pingers.mtx.Lock()
+			delete(p.Pingers.Stack, s)
 			p.Pingers.mtx.Unlock()
+
+			if e.Error != nil {
+				fmt.Printf("\nSocket ID: %v\nClosed due to error: %s\n", s.ID, e.Error)
+			} else {
+				fmt.Printf("\nSocket ID: %v\nClosed due to quit quit signal.\n", s.ID)
+			}
 		}
 	}
 }
@@ -163,8 +131,7 @@ func (p *SocketPool) controlPing() {
 						p.Pingers.Stack[s]++
 						s.Pool2Socket <- Message{Type: websocket.PingMessage}
 					} else {
-						s.ShutdownRead <- struct{}{}
-						s.ShutdownWrite <- struct{}{}
+						s.Quit <- struct{}{}
 					}
 				}
 				p.Pingers.mtx.Unlock()

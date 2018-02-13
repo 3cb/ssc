@@ -67,9 +67,8 @@ type Pipes struct {
 	StopShutdownControl chan *sync.WaitGroup
 	StopPingControl     chan *sync.WaitGroup
 
-	// Error channels carry messages from read/write goroutines to ControlShutdown() goroutine
-	ErrorRead  chan ErrorMsg
-	ErrorWrite chan ErrorMsg
+	// Error channel carries messages from read/write goroutines to ControlShutdown() goroutine
+	Error chan ErrorMsg
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
@@ -85,8 +84,7 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 	pipes.StopShutdownControl = make(chan *sync.WaitGroup)
 	pipes.StopPingControl = make(chan *sync.WaitGroup)
 
-	pipes.ErrorRead = make(chan ErrorMsg, 100)
-	pipes.ErrorWrite = make(chan ErrorMsg, 100)
+	pipes.Error = make(chan ErrorMsg, 100)
 
 	pool := &SocketPool{
 		Readers: Readers{Stack: make(map[*Socket]bool)},
@@ -160,7 +158,7 @@ func (p *SocketPool) Drain() {
 	p.Readers.mtx.RLock()
 	for s, active := range p.Readers.Stack {
 		if active {
-			s.ShutdownRead <- struct{}{}
+			s.Quit <- struct{}{}
 		}
 	}
 	p.Readers.mtx.RUnlock()
