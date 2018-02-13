@@ -21,7 +21,10 @@ type SocketPool struct {
 	Pingers
 	ClosedURLs
 	*Pipes
-	Config
+
+	// These fields are set during initialization
+	ServerURLs   []string
+	PingInterval time.Duration
 }
 
 // Readers contains map of sockets with read goroutines
@@ -70,22 +73,9 @@ type Pipes struct {
 	ErrorWrite chan ErrorMsg
 }
 
-// Config is used to pass configuration settings to the Pool initialization function
-type Config struct {
-	ServerURLs   []string
-	IsReadable   bool
-	IsWritable   bool
-	PingInterval time.Duration //minimum of 30 seconds
-}
-
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 // If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
-func NewSocketPool(config Config) (*SocketPool, error) {
-	if !config.IsReadable && !config.IsWritable {
-		err := errors.New("bad input values: Sockets cannot be both unreadable and unwritable")
-		return nil, err
-	}
-
+func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 	pipes := &Pipes{}
 	pipes.Inbound = make(chan Message)
 	pipes.Outbound = make(chan Message)
@@ -105,14 +95,16 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 		Pingers:    Pingers{Stack: make(map[*Socket]int)},
 		ClosedURLs: ClosedURLs{Stack: make(map[string]bool)},
 		Pipes:      pipes,
-		Config:     config,
+
+		ServerURLs:   urls,
+		PingInterval: pingInt,
 	}
 
 	pool.Control()
 
-	if len(config.ServerURLs) > 0 {
-		for _, url := range config.ServerURLs {
-			s := newSocketInstance(url, config)
+	if len(pool.ServerURLs) > 0 {
+		for _, url := range pool.ServerURLs {
+			s := newSocketInstance(url)
 			success, err := s.connectServer(pool)
 			if success {
 				log.Printf("Connected to websocket(%v)\n", url)
@@ -125,41 +117,13 @@ func NewSocketPool(config Config) (*SocketPool, error) {
 	return pool, nil
 }
 
-// Drain shuts down all read and write goroutines as well as all control goroutines
-func (p *SocketPool) Drain() {
-	p.Locked = true
-	p.Readers.mtx.RLock()
-	for s, active := range p.Readers.Stack {
-		if active {
-			s.ShutdownRead <- struct{}{}
-		}
-	}
-	p.Readers.mtx.RUnlock()
-
-	wg := &sync.WaitGroup{}
-	var count int
-	if p.Config.PingInterval > 0 {
-		count = 1
-	} else {
-		count = 0
-	}
-	wg.Add(3 + count)
-	p.StopReadControl <- wg
-	p.StopWriteControl <- wg
-	p.StopShutdownControl <- wg
-	if p.Config.PingInterval > 0 {
-		p.StopPingControl <- wg
-	}
-	wg.Wait()
-}
-
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
 	if p.Locked {
 		return nil, errors.New("pool is locked. cannot add new websocket connection")
 	}
-	s := newSocketInstance("", p.Config)
+	s := newSocketInstance("")
 	success, err := s.connectClient(p, upgrader, w, r)
 	if success {
 		return s, nil
@@ -173,7 +137,7 @@ func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
 	if p.Locked {
 		return nil, errors.New("pool is locked. cannot add new websocket connection")
 	}
-	s := newSocketInstance(url, p.Config)
+	s := newSocketInstance(url)
 	success, err := s.connectServer(p)
 	if success {
 		log.Printf("Connected to websocket(%v)\n", url)
@@ -190,4 +154,31 @@ func (p *SocketPool) isPingStackEmpty() bool {
 		return false
 	}
 	return true
+}
+
+// Drain shuts down all read and write goroutines as well as all control goroutines
+func (p *SocketPool) Drain() {
+	p.Locked = true
+	p.Readers.mtx.RLock()
+	for s, active := range p.Readers.Stack {
+		if active {
+			s.ShutdownRead <- struct{}{}
+		}
+	}
+	p.Readers.mtx.RUnlock()
+
+	wg := &sync.WaitGroup{}
+	count := 0
+	if p.PingInterval > 0 {
+		count++
+	}
+
+	wg.Add(3 + count)
+	p.StopReadControl <- wg
+	p.StopWriteControl <- wg
+	p.StopShutdownControl <- wg
+	if p.PingInterval > 0 {
+		p.StopPingControl <- wg
+	}
+	wg.Wait()
 }
