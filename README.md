@@ -1,3 +1,5 @@
+**This README is NOT up to date.  Will fix soon**
+
 # Simple Socket Controller
 Built on top of gorilla toolkit's websocket package, this library allows caller to create and control a pool of websockets
 
