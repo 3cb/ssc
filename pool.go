@@ -48,7 +48,7 @@ type SocketPool struct {
 	stopPingControl     chan *sync.WaitGroup
 
 	// Shutdown channel carries messages from read/write goroutines to ControlShutdown() goroutine
-	shutdown chan *Socket
+	shutdown chan *socket
 
 	// allClosed alerts pool.Drain() that all read/write goroutines have been stopped and all websockets have been disconnected
 	allClosed chan struct{}
@@ -57,13 +57,13 @@ type SocketPool struct {
 // RW contains map of sockets with read and write goroutines
 type rw struct {
 	mtx   sync.RWMutex
-	stack map[*Socket]int
+	stack map[*socket]int
 }
 
 // Ping holds map of sockets to keep track of unreturned pings
 type ping struct {
 	mtx   sync.RWMutex
-	stack map[*Socket]int
+	stack map[*socket]int
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
@@ -71,7 +71,7 @@ type ping struct {
 func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 
 	pool := &SocketPool{
-		rw: rw{stack: make(map[*Socket]int)},
+		rw: rw{stack: make(map[*socket]int)},
 
 		serverURLs:   urls,
 		pingInterval: pingInt,
@@ -83,7 +83,7 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 		stopWriteControl:    make(chan *sync.WaitGroup),
 		stopShutdownControl: make(chan *sync.WaitGroup),
 		stopPingControl:     make(chan *sync.WaitGroup),
-		shutdown:            make(chan *Socket, 200),
+		shutdown:            make(chan *socket, 200),
 		allClosed:           make(chan struct{}),
 	}
 
@@ -106,23 +106,23 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
+func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
 	if p.isDraining {
-		return nil, errors.New("pool is draining -- cannot add new websocket connection")
+		return errors.New("pool is draining -- cannot add new websocket connection")
 	}
 	s := newSocketInstance(id)
 	success, err := s.connectClient(p, upgrader, w, r)
 	if success {
-		return s, nil
+		return nil
 	}
-	return nil, err
+	return err
 }
 
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
+func (p *SocketPool) AddServerSocket(url string) error {
 	if p.isDraining {
-		return nil, errors.New("pool is draining -- cannot add new websocket connection")
+		return errors.New("pool is draining -- cannot add new websocket connection")
 	}
 	s := newSocketInstance(url)
 	success, err := s.connectServer(p)
@@ -131,7 +131,7 @@ func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
 	} else {
 		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
 	}
-	return s, nil
+	return nil
 }
 
 // Drain shuts down all read and write goroutines as well as all control goroutines

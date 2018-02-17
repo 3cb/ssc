@@ -10,7 +10,7 @@ import (
 )
 
 // Socket type defines a websocket connection along with configuration and channels used to run read/write goroutines
-type Socket struct {
+type socket struct {
 	id          string
 	connection  *websocket.Conn
 	pool2Socket chan Message
@@ -20,9 +20,9 @@ type Socket struct {
 }
 
 // newSocketInstance returns a new instance of a Socket
-func newSocketInstance(url string) *Socket {
-	return &Socket{
-		id:          url,
+func newSocketInstance(id string) *socket {
+	return &socket{
+		id:          id,
 		pool2Socket: make(chan Message),
 		rQuit:       make(chan struct{}),
 		wQuit:       make(chan struct{}),
@@ -31,7 +31,7 @@ func newSocketInstance(url string) *Socket {
 }
 
 // connectClient connects to a websocket using websocket.Upgrader.Upgrade() method and starts goroutine/s for read and write
-func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
+func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return false, err
@@ -52,6 +52,11 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	p.rw.mtx.Lock()
 	p.rw.stack[s] = 0
 	p.rw.mtx.Unlock()
+
+	p.ping.mtx.Lock()
+	p.ping.stack[s] = 0
+	p.ping.mtx.Unlock()
+
 	go s.read(p)
 	go s.write(p)
 
@@ -60,7 +65,7 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 
 // connectServer connects to websocket given a url string from SocketPool.
 // starts goroutines for read and write
-func (s *Socket) connectServer(p *SocketPool) (bool, error) {
+func (s *socket) connectServer(p *SocketPool) (bool, error) {
 	c, resp, err := websocket.DefaultDialer.Dial(s.id, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
@@ -79,6 +84,11 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 	p.rw.mtx.Lock()
 	p.rw.stack[s] = 0
 	p.rw.mtx.Unlock()
+
+	p.ping.mtx.Lock()
+	p.ping.stack[s] = 0
+	p.ping.mtx.Unlock()
+
 	go s.read(p)
 	go s.write(p)
 
@@ -87,7 +97,7 @@ func (s *Socket) connectServer(p *SocketPool) (bool, error) {
 
 // read runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-func (s *Socket) read(p *SocketPool) {
+func (s *socket) read(p *SocketPool) {
 	for {
 		select {
 		case <-s.rQuit:
@@ -109,7 +119,7 @@ func (s *Socket) read(p *SocketPool) {
 
 // write runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
-func (s *Socket) write(p *SocketPool) {
+func (s *socket) write(p *SocketPool) {
 	for {
 		select {
 		case <-s.wQuit:
@@ -129,7 +139,7 @@ func (s *Socket) write(p *SocketPool) {
 }
 
 // close closes the websocket connection
-func (s *Socket) close() bool {
+func (s *socket) close() bool {
 	err := s.connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err != nil {
 		s.connection.Close()
