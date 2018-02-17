@@ -3,31 +3,31 @@ package ssc
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
 )
 
-// Socket type defines a websocket connection along with configuration and channels used to run read and write goroutines
+// Socket type defines a websocket connection along with configuration and channels used to run read/write goroutines
 type Socket struct {
-	Connection  *websocket.Conn
-	ID          string
-	Pool2Socket chan Message
-	Quit        chan struct{}
-	R2W         chan struct{}
-	W2R         chan struct{}
+	id          string
+	connection  *websocket.Conn
+	pool2Socket chan Message
+	rQuit       chan struct{}
+	wQuit       chan struct{}
+	errors      []error
 }
 
-// NewSocketInstance returns a new instance of a Socket
+// newSocketInstance returns a new instance of a Socket
 func newSocketInstance(url string) *Socket {
-	s := &Socket{
-		ID:          url,
-		Pool2Socket: make(chan Message),
-		Quit:        make(chan struct{}),
-		R2W:         make(chan struct{}),
-		W2R:         make(chan struct{}),
+	return &Socket{
+		id:          url,
+		pool2Socket: make(chan Message),
+		rQuit:       make(chan struct{}),
+		wQuit:       make(chan struct{}),
+		errors:      []error{},
 	}
-	return s
 }
 
 // connectClient connects to a websocket using websocket.Upgrader.Upgrade() method and starts goroutine/s for read and write
@@ -36,34 +36,24 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	if err != nil {
 		return false, err
 	}
-	s.Connection = c
-	s.Connection.SetPongHandler(func(appData string) error {
-		p.Pingers.mtx.Lock()
-		p.Pingers.Stack[s]--
-		p.Pingers.mtx.Unlock()
+	s.connection = c
+	s.connection.SetPongHandler(func(appData string) error {
+		p.rw.mtx.Lock()
+		p.rw.stack[s]--
+		p.rw.mtx.Unlock()
 		return nil
 	})
-	s.Connection.SetCloseHandler(func(code int, text string) error {
-		addr := s.Connection.RemoteAddr()
-		fmt.Printf("websocket at %v has been closed: %v", addr, code)
+	s.connection.SetCloseHandler(func(code int, text string) error {
+		addr := s.connection.RemoteAddr()
+		fmt.Printf("websocket at %v has been closed: %v\n", addr, code)
 		return nil
 	})
 
-	p.Readers.mtx.Lock()
-	go s.readSocket(p.Pipes)
-	p.Readers.Stack[s] = true
-	p.Readers.mtx.Unlock()
-
-	p.Writers.mtx.Lock()
-	go s.writeSocket(p.Pipes)
-	p.Writers.Stack[s] = true
-	p.Writers.mtx.Unlock()
-
-	if p.PingInterval > 0 {
-		p.Pingers.mtx.Lock()
-		p.Pingers.Stack[s] = 0
-		p.Pingers.mtx.Unlock()
-	}
+	p.rw.mtx.Lock()
+	p.rw.stack[s] = 0
+	p.rw.mtx.Unlock()
+	go s.read(p)
+	go s.write(p)
 
 	return true, nil
 }
@@ -71,93 +61,78 @@ func (s *Socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 // connectServer connects to websocket given a url string from SocketPool.
 // starts goroutines for read and write
 func (s *Socket) connectServer(p *SocketPool) (bool, error) {
-	c, resp, err := websocket.DefaultDialer.Dial(s.ID, nil)
+	c, resp, err := websocket.DefaultDialer.Dial(s.id, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return false, err
 	}
-	s.Connection = c
-	s.Connection.SetPingHandler(func(appData string) error {
-		s.Pool2Socket <- Message{Type: websocket.PongMessage, Payload: []byte("")}
+	s.connection = c
+	s.connection.SetPingHandler(func(appData string) error {
+		s.pool2Socket <- Message{Type: websocket.PongMessage, Payload: []byte("")}
 		return nil
 	})
-	s.Connection.SetCloseHandler(func(code int, text string) error {
-		addr := s.Connection.RemoteAddr()
-		fmt.Printf("websocket at %v has been closed: %v", addr, code)
+	s.connection.SetCloseHandler(func(code int, text string) error {
+		addr := s.connection.RemoteAddr()
+		fmt.Printf("websocket at %v has been closed: %v\n", addr, code)
 		return nil
 	})
 
-	p.Readers.mtx.Lock()
-	go s.readSocket(p.Pipes)
-	p.Readers.Stack[s] = true
-	p.Readers.mtx.Unlock()
-
-	p.Writers.mtx.Lock()
-	go s.writeSocket(p.Pipes)
-	p.Writers.Stack[s] = true
-	p.Writers.mtx.Unlock()
-
-	if p.PingInterval > 0 {
-		p.Pingers.mtx.Lock()
-		p.Pingers.Stack[s] = 0
-		p.Pingers.mtx.Unlock()
-	}
+	p.rw.mtx.Lock()
+	p.rw.stack[s] = 0
+	p.rw.mtx.Unlock()
+	go s.read(p)
+	go s.write(p)
 
 	return true, nil
 }
 
-// readSocket runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
+// read runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-func (s *Socket) readSocket(pipes *Pipes) {
+func (s *Socket) read(p *SocketPool) {
 	for {
 		select {
-		case <-s.W2R:
-			return
-		case <-s.Quit:
-			s.R2W <- struct{}{}
-			s.closeSocket()
-			pipes.Error <- ErrorMsg{s, nil}
+		case <-s.rQuit:
+			log.Printf("quit signal received by %v READ Goroutine. shutting down.\n", s.id)
+			p.shutdown <- s
 			return
 		default:
-			msgType, msg, err := s.Connection.ReadMessage()
+			msgType, msg, err := s.connection.ReadMessage()
 			if err != nil {
-				s.R2W <- struct{}{}
-				s.closeSocket()
-				pipes.Error <- ErrorMsg{s, err}
+				s.wQuit <- struct{}{}
+				s.errors = append(s.errors, err)
+				p.shutdown <- s
 				return
 			}
-			pipes.Socket2Pool <- Message{ID: s.ID, Type: msgType, Payload: msg}
+			p.s2p <- Message{ID: s.id, Type: msgType, Payload: msg}
 		}
 	}
 }
 
-// writeSocket runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
+// write runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
-func (s *Socket) writeSocket(pipes *Pipes) {
+func (s *Socket) write(p *SocketPool) {
 	for {
 		select {
-		case <-s.R2W:
+		case <-s.wQuit:
+			log.Printf("quit signal received by %v WRITE goroutine. shutting down.\n", s.id)
+			p.shutdown <- s
 			return
-		case <-s.Quit:
-			s.W2R <- struct{}{}
-			s.closeSocket()
-			pipes.Error <- ErrorMsg{s, nil}
-			return
-		case msg := <-s.Pool2Socket:
-			err := s.Connection.WriteMessage(msg.Type, msg.Payload)
+		case msg := <-s.pool2Socket:
+			err := s.connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
-				s.W2R <- struct{}{}
-				s.closeSocket()
-				pipes.Error <- ErrorMsg{s, err}
+				s.rQuit <- struct{}{}
+				s.errors = append(s.errors, err)
+				p.shutdown <- s
 				return
 			}
 		}
 	}
 }
 
-// closeSocket closes the websocket connection
-func (s *Socket) closeSocket() {
-	err := s.Connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+// close closes the websocket connection
+func (s *Socket) close() bool {
+	err := s.connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	if err != nil {
-		s.Connection.Close()
+		s.connection.Close()
 	}
+	return true
 }

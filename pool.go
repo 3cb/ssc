@@ -11,47 +11,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Message contains type and payload as a normal websocket message
+// ID is added in case user needs to identify source
+type Message struct {
+	ID      string
+	Type    int
+	Payload []byte
+}
+
 // SocketPool is a collection of websocket connections combined with
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type SocketPool struct {
-	Locked bool
-	Readers
-	Writers
-	Pingers
-	*Pipes
+	mtx        sync.RWMutex
+	isDraining bool
+	rw
+	ping
 
-	// These fields are set during initialization
-	ServerURLs   []string
-	PingInterval time.Duration
-}
+	// These fields are set with NewSocketPool parameters
+	serverURLs   []string
+	pingInterval time.Duration
 
-// Readers contains map of sockets with read goroutines
-type Readers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]bool
-}
-
-// Writers contains map of sockets with write goroutines
-type Writers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]bool
-}
-
-// Pingers contains map of sockets being pinged
-type Pingers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]int
-}
-
-// ClosedURLs contains map of all URLs of closed server websockets
-type ClosedURLs struct {
-	mtx   sync.RWMutex
-	Stack map[string]bool
-}
-
-// Pipes contains data communication channels:
-type Pipes struct {
 	// Inbound channel carries messages from caller application to WriteControl() method
 	Inbound chan Message
 
@@ -59,47 +39,58 @@ type Pipes struct {
 	Outbound chan Message
 
 	// Socket2Pool channel carries messages from Read goroutines to ReadControl() method
-	Socket2Pool chan Message
+	s2p chan Message
 
-	// Stop channels are used to shutdown control goroutines
-	StopReadControl     chan *sync.WaitGroup
-	StopWriteControl    chan *sync.WaitGroup
-	StopShutdownControl chan *sync.WaitGroup
-	StopPingControl     chan *sync.WaitGroup
+	// Stop channels are used to stop control goroutines
+	stopReadControl     chan *sync.WaitGroup
+	stopWriteControl    chan *sync.WaitGroup
+	stopShutdownControl chan *sync.WaitGroup
+	stopPingControl     chan *sync.WaitGroup
 
-	// Error channel carries messages from read/write goroutines to ControlShutdown() goroutine
-	Error chan ErrorMsg
+	// Shutdown channel carries messages from read/write goroutines to ControlShutdown() goroutine
+	shutdown chan *Socket
+
+	// allClosed alerts pool.Drain() that all read/write goroutines have been stopped and all websockets have been disconnected
+	allClosed chan struct{}
+}
+
+// RW contains map of sockets with read and write goroutines
+type rw struct {
+	mtx   sync.RWMutex
+	stack map[*Socket]int
+}
+
+// Ping holds map of sockets to keep track of unreturned pings
+type ping struct {
+	mtx   sync.RWMutex
+	stack map[*Socket]int
 }
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 // If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
 func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
-	pipes := &Pipes{}
-	pipes.Inbound = make(chan Message)
-	pipes.Outbound = make(chan Message)
-	pipes.Socket2Pool = make(chan Message)
-
-	pipes.StopReadControl = make(chan *sync.WaitGroup)
-	pipes.StopWriteControl = make(chan *sync.WaitGroup)
-	pipes.StopShutdownControl = make(chan *sync.WaitGroup)
-	pipes.StopPingControl = make(chan *sync.WaitGroup)
-
-	pipes.Error = make(chan ErrorMsg, 100)
 
 	pool := &SocketPool{
-		Readers: Readers{Stack: make(map[*Socket]bool)},
-		Writers: Writers{Stack: make(map[*Socket]bool)},
-		Pingers: Pingers{Stack: make(map[*Socket]int)},
-		Pipes:   pipes,
+		rw: rw{stack: make(map[*Socket]int)},
 
-		ServerURLs:   urls,
-		PingInterval: pingInt,
+		serverURLs:   urls,
+		pingInterval: pingInt,
+
+		Inbound:             make(chan Message, 200),
+		Outbound:            make(chan Message, 200),
+		s2p:                 make(chan Message, 200),
+		stopReadControl:     make(chan *sync.WaitGroup),
+		stopWriteControl:    make(chan *sync.WaitGroup),
+		stopShutdownControl: make(chan *sync.WaitGroup),
+		stopPingControl:     make(chan *sync.WaitGroup),
+		shutdown:            make(chan *Socket, 200),
+		allClosed:           make(chan struct{}),
 	}
 
 	pool.Control()
 
-	if len(pool.ServerURLs) > 0 {
-		for _, url := range pool.ServerURLs {
+	if len(pool.serverURLs) > 0 {
+		for _, url := range pool.serverURLs {
 			s := newSocketInstance(url)
 			success, err := s.connectServer(pool)
 			if success {
@@ -115,11 +106,11 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
-	if p.Locked {
-		return nil, errors.New("pool is locked. cannot add new websocket connection")
+func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
+	if p.isDraining {
+		return nil, errors.New("pool is draining -- cannot add new websocket connection")
 	}
-	s := newSocketInstance("")
+	s := newSocketInstance(id)
 	success, err := s.connectClient(p, upgrader, w, r)
 	if success {
 		return s, nil
@@ -130,8 +121,8 @@ func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.Respon
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
-	if p.Locked {
-		return nil, errors.New("pool is locked. cannot add new websocket connection")
+	if p.isDraining {
+		return nil, errors.New("pool is draining -- cannot add new websocket connection")
 	}
 	s := newSocketInstance(url)
 	success, err := s.connectServer(p)
@@ -143,38 +134,30 @@ func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
 	return s, nil
 }
 
-func (p *SocketPool) isPingStackEmpty() bool {
-	p.Pingers.mtx.RLock()
-	defer p.Pingers.mtx.RUnlock()
-	if len(p.Pingers.Stack) > 0 {
-		return false
-	}
-	return true
-}
-
 // Drain shuts down all read and write goroutines as well as all control goroutines
 func (p *SocketPool) Drain() {
-	p.Locked = true
-	p.Readers.mtx.RLock()
-	for s, active := range p.Readers.Stack {
-		if active {
-			s.Quit <- struct{}{}
-		}
-	}
-	p.Readers.mtx.RUnlock()
+	p.mtx.Lock()
+	p.isDraining = true
+	p.mtx.Unlock()
 
 	wg := &sync.WaitGroup{}
-	count := 0
-	if p.PingInterval > 0 {
-		count++
+	if p.pingInterval > 0 {
+		wg.Add(1)
+		p.stopPingControl <- wg
+		wg.Wait()
 	}
+	p.rw.mtx.RLock()
+	for s := range p.rw.stack {
+		s.rQuit <- struct{}{}
+		s.wQuit <- struct{}{}
+	}
+	p.rw.mtx.RUnlock()
 
-	wg.Add(3 + count)
-	p.StopReadControl <- wg
-	p.StopWriteControl <- wg
-	p.StopShutdownControl <- wg
-	if p.PingInterval > 0 {
-		p.StopPingControl <- wg
-	}
+	<-p.allClosed
+
+	wg.Add(3)
+	p.stopReadControl <- wg
+	p.stopWriteControl <- wg
+	p.stopShutdownControl <- wg
 	wg.Wait()
 }

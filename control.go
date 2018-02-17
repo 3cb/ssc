@@ -14,84 +14,83 @@ func (p *SocketPool) Control() {
 	go p.controlShutdown()
 	go p.controlRead()
 	go p.controlWrite()
-	if p.PingInterval > 0 {
+	if p.pingInterval > 0 {
 		go p.controlPing()
 	}
 }
 
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *SocketPool) controlRead() {
-	defer func() {
-		log.Printf("ControlRead goroutine was stopped at %v\n", time.Now())
-	}()
 	log.Printf("ControlRead started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg := <-p.Pipes.StopReadControl:
+		case wg := <-p.stopReadControl:
+			log.Printf("ControlRead goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
-		case msg := <-p.Pipes.Socket2Pool:
-			p.Pipes.Outbound <- msg
+		case msg := <-p.s2p:
+			p.Outbound <- msg
 		}
 	}
 }
 
 // controlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
 func (p *SocketPool) controlWrite() {
-	defer func() {
-		log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
-	}()
 	log.Printf("ControlWrite started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg := <-p.Pipes.StopWriteControl:
+		case wg := <-p.stopWriteControl:
+			log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
-		case msg := <-p.Pipes.Inbound:
-			p.Writers.mtx.RLock()
-			for socket, open := range p.Writers.Stack {
-				if open {
-					socket.Pool2Socket <- msg
-				}
+		case msg := <-p.Inbound:
+			p.rw.mtx.RLock()
+			for socket := range p.rw.stack {
+				socket.pool2Socket <- msg
 			}
-			p.Writers.mtx.RUnlock()
+			p.rw.mtx.RUnlock()
 		}
 	}
 }
 
 // controlShutdown method listens for Error Messages and dispatches shutdown messages
 func (p *SocketPool) controlShutdown() {
-	defer func() {
-		log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
-	}()
 	log.Printf("ControlShutdown started at %v\n", time.Now())
 
 	for {
 		select {
-		case wg := <-p.Pipes.StopShutdownControl:
+		case wg := <-p.stopShutdownControl:
+			log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
-		case e := <-p.Pipes.Error:
-			s := e.Socket
-
-			p.Readers.mtx.Lock()
-			delete(p.Readers.Stack, s)
-			p.Readers.mtx.Unlock()
-
-			p.Writers.mtx.Lock()
-			delete(p.Writers.Stack, s)
-			p.Writers.mtx.Unlock()
-
-			p.Pingers.mtx.Lock()
-			delete(p.Pingers.Stack, s)
-			p.Pingers.mtx.Unlock()
-
-			if e.Error != nil {
-				fmt.Printf("\nSocket ID: %v\nClosed due to error: %s\nTime: %v\n", s.ID, e.Error, time.Now())
+		case s := <-p.shutdown:
+			closed := false
+			p.rw.mtx.Lock()
+			if p.rw.stack[s] > 0 {
+				closed = s.close()
+				delete(p.rw.stack, s)
 			} else {
-				fmt.Printf("\nSocket ID: %v\nClosed due to quit quit signal.\nTime: %v\n", s.ID, time.Now())
+				p.rw.stack[s]++
+				delete(p.ping.stack, s)
+			}
+			p.rw.mtx.Unlock()
+
+			if closed {
+				if len(s.errors) > 0 {
+					fmt.Printf("\nSocket ID: %v\nAddr: %vClosed due to error: %s\nTime: %v\n", s.id, s.connection.RemoteAddr(), s.errors, time.Now())
+				} else {
+					fmt.Printf("\nSocket ID: %v\nClosed due to quit signal\nTime: %v\n", s.id, time.Now())
+				}
+			}
+
+			if p.isDraining {
+				p.rw.mtx.RLock()
+				if len(p.rw.stack) == 0 {
+					p.allClosed <- struct{}{}
+				}
+				p.rw.mtx.RUnlock()
 			}
 		}
 	}
@@ -99,38 +98,35 @@ func (p *SocketPool) controlShutdown() {
 
 // controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined in Config
 func (p *SocketPool) controlPing() {
-	defer func() {
-		log.Printf("ControlPing goroutine was stopped at %v\n", time.Now())
-	}()
 	log.Printf("ControlPing started at %v\n", time.Now())
 
 	var t time.Duration
-	if p.PingInterval < (time.Second * 30) {
+	if p.pingInterval < (time.Second * 30) {
 		t = time.Second * 30
 	} else {
-		t = p.PingInterval
+		t = p.pingInterval
 	}
 	ticker := time.NewTicker(t)
 
 	for {
 		select {
-		case wg := <-p.Pipes.StopPingControl:
+		case wg := <-p.stopPingControl:
+			log.Printf("ControlPing goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
 		case <-ticker.C:
-			if !p.isPingStackEmpty() {
-				p.Pingers.mtx.Lock()
-				fmt.Printf("%v active websocket connections", len(p.Pingers.Stack))
-				for s, missed := range p.Pingers.Stack {
-					if missed < 2 {
-						p.Pingers.Stack[s]++
-						s.Pool2Socket <- Message{Type: websocket.PingMessage}
-					} else {
-						s.Quit <- struct{}{}
-					}
+			p.ping.mtx.Lock()
+			fmt.Printf("%v active websocket connections", len(p.ping.stack))
+			for s, missed := range p.ping.stack {
+				if missed < 2 {
+					p.ping.stack[s]++
+					s.pool2Socket <- Message{Type: websocket.PingMessage}
+				} else {
+					s.rQuit <- struct{}{}
+					s.wQuit <- struct{}{}
 				}
-				p.Pingers.mtx.Unlock()
 			}
+			p.ping.mtx.Unlock()
 		}
 	}
 }
