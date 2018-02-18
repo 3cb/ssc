@@ -71,7 +71,9 @@ type ping struct {
 func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 
 	pool := &SocketPool{
-		rw: rw{stack: make(map[*socket]int)},
+		isDraining: false,
+		rw:         rw{stack: make(map[*socket]int)},
+		ping:       ping{stack: make(map[*socket]int)},
 
 		serverURLs:   urls,
 		pingInterval: pingInt,
