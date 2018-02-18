@@ -119,6 +119,7 @@ func (p *Pool) Write(msg *Message) error {
 		for s := range p.rw.stack {
 			if id == s.id {
 				s.p2s <- msg
+				p.rw.mtx.RUnlock()
 				return nil
 			}
 		}
@@ -158,6 +159,27 @@ func (p *Pool) AddServerSocket(url string) error {
 		return err
 	}
 	return nil
+}
+
+// RemoveSocket takes an id string and sends quit signals to the read and write goroutines
+// returns an error if the id string is empty or is not in the stack
+func (p *Pool) RemoveSocket(id string) error {
+	switch id {
+	case "":
+		return errors.New("emptry string -- cannot remove socket without proper id")
+	default:
+		p.rw.mtx.RLock()
+		for s := range p.rw.stack {
+			if id == s.id {
+				s.rQuit <- struct{}{}
+				s.wQuit <- struct{}{}
+				p.rw.mtx.RUnlock()
+				return nil
+			}
+		}
+		p.rw.mtx.RUnlock()
+	}
+	return errors.New("id not found in stack -- cannot remove")
 }
 
 // Stop shuts down all read and write goroutines as well as all control goroutines
