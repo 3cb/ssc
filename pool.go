@@ -39,7 +39,7 @@ type Pool struct {
 	// Outbound channel carries messages from ReadControl() method to caller application
 	Outbound chan *Message
 
-	// s2p channel carries messages from Read goroutines to ReadControl() method
+	// s2p channel carries messages from Read goroutines to ReadControl() method(i.e., socket to pool)
 	s2p chan *Message
 
 	// stop channels are used to stop control goroutines
@@ -109,7 +109,7 @@ func (p *Pool) Start() error {
 }
 
 // Write takes a *Message and writes it to a Socket based on Message.ID
-// If Message.ID is an empty string or doesn't match an existing ID in the stack will return an error
+// If Message.ID is an empty string or doesn't match an existing ID in the stack Write will return an error
 func (p *Pool) Write(msg *Message) error {
 	switch id := msg.ID; id {
 	case "":
@@ -118,7 +118,7 @@ func (p *Pool) Write(msg *Message) error {
 		p.rw.mtx.RLock()
 		for s := range p.rw.stack {
 			if id == s.id {
-				s.pool2Socket <- msg
+				s.p2s <- msg
 				return nil
 			}
 		}

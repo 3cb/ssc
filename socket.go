@@ -10,22 +10,22 @@ import (
 
 // Socket type defines a websocket connection along with configuration and channels used to run read/write goroutines
 type socket struct {
-	id          string
-	connection  *websocket.Conn
-	pool2Socket chan *Message
-	rQuit       chan struct{}
-	wQuit       chan struct{}
-	errors      []error
+	id         string
+	connection *websocket.Conn
+	p2s        chan *Message
+	rQuit      chan struct{}
+	wQuit      chan struct{}
+	errors     []error
 }
 
 // newSocketInstance returns a new instance of a Socket
 func newSocketInstance(id string) *socket {
 	return &socket{
-		id:          id,
-		pool2Socket: make(chan *Message),
-		rQuit:       make(chan struct{}),
-		wQuit:       make(chan struct{}),
-		errors:      []error{},
+		id:     id,
+		p2s:    make(chan *Message),
+		rQuit:  make(chan struct{}),
+		wQuit:  make(chan struct{}),
+		errors: []error{},
 	}
 }
 
@@ -71,7 +71,7 @@ func (s *socket) connectServer(p *Pool) error {
 	}
 	s.connection = c
 	s.connection.SetPingHandler(func(appData string) error {
-		s.pool2Socket <- &Message{Type: websocket.PongMessage, Payload: []byte("")}
+		s.p2s <- &Message{Type: websocket.PongMessage, Payload: []byte("")}
 		return nil
 	})
 	s.connection.SetCloseHandler(func(code int, text string) error {
@@ -123,7 +123,7 @@ func (s *socket) write(p *Pool) {
 		case <-s.wQuit:
 			p.shutdown <- s
 			return
-		case msg := <-s.pool2Socket:
+		case msg := <-s.p2s:
 			err := s.connection.WriteMessage(msg.Type, msg.Payload)
 			if err != nil {
 				s.rQuit <- struct{}{}

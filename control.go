@@ -48,7 +48,7 @@ func (p *Pool) controlWrite() {
 		case msg := <-p.Inbound:
 			p.rw.mtx.RLock()
 			for socket := range p.rw.stack {
-				socket.pool2Socket <- msg
+				socket.p2s <- msg
 			}
 			p.rw.mtx.RUnlock()
 		}
@@ -120,7 +120,7 @@ func (p *Pool) controlPing() {
 			for s, missed := range p.ping.stack {
 				if missed < 2 {
 					p.ping.stack[s]++
-					s.pool2Socket <- &Message{Type: websocket.PingMessage}
+					s.p2s <- &Message{Type: websocket.PingMessage}
 				} else {
 					s.rQuit <- struct{}{}
 					s.wQuit <- struct{}{}
