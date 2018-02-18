@@ -99,7 +99,7 @@ func (p *Pool) Start() error {
 			s := newSocketInstance(url)
 			err := s.connectServer(p)
 			if err != nil {
-				p.Drain()
+				p.Stop()
 				return err
 			}
 			log.Printf("Connected to websocket(%v)\n", url)
