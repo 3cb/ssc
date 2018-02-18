@@ -120,7 +120,7 @@ func (p *SocketPool) controlPing() {
 			for s, missed := range p.ping.stack {
 				if missed < 2 {
 					p.ping.stack[s]++
-					s.pool2Socket <- Message{Type: websocket.PingMessage}
+					s.pool2Socket <- &Message{Type: websocket.PingMessage}
 				} else {
 					s.rQuit <- struct{}{}
 					s.wQuit <- struct{}{}

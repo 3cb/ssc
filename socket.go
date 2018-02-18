@@ -12,7 +12,7 @@ import (
 type socket struct {
 	id          string
 	connection  *websocket.Conn
-	pool2Socket chan Message
+	pool2Socket chan *Message
 	rQuit       chan struct{}
 	wQuit       chan struct{}
 	errors      []error
@@ -22,7 +22,7 @@ type socket struct {
 func newSocketInstance(id string) *socket {
 	return &socket{
 		id:          id,
-		pool2Socket: make(chan Message),
+		pool2Socket: make(chan *Message),
 		rQuit:       make(chan struct{}),
 		wQuit:       make(chan struct{}),
 		errors:      []error{},
@@ -71,7 +71,7 @@ func (s *socket) connectServer(p *SocketPool) error {
 	}
 	s.connection = c
 	s.connection.SetPingHandler(func(appData string) error {
-		s.pool2Socket <- Message{Type: websocket.PongMessage, Payload: []byte("")}
+		s.pool2Socket <- &Message{Type: websocket.PongMessage, Payload: []byte("")}
 		return nil
 	})
 	s.connection.SetCloseHandler(func(code int, text string) error {
@@ -110,7 +110,7 @@ func (s *socket) read(p *SocketPool) {
 				p.shutdown <- s
 				return
 			}
-			p.s2p <- Message{ID: s.id, Type: msgType, Payload: msg}
+			p.s2p <- &Message{ID: s.id, Type: msgType, Payload: msg}
 		}
 	}
 }

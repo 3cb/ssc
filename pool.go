@@ -33,13 +33,13 @@ type SocketPool struct {
 	pingInterval time.Duration
 
 	// Inbound channel carries messages from caller application to WriteControl() method
-	Inbound chan Message
+	Inbound chan *Message
 
 	// Outbound channel carries messages from ReadControl() method to caller application
-	Outbound chan Message
+	Outbound chan *Message
 
 	// Socket2Pool channel carries messages from Read goroutines to ReadControl() method
-	s2p chan Message
+	s2p chan *Message
 
 	// Stop channels are used to stop control goroutines
 	stopReadControl     chan *sync.WaitGroup
@@ -69,7 +69,6 @@ type ping struct {
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 // If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
 func NewSocketPool(urls []string, pingInt time.Duration) *SocketPool {
-
 	return &SocketPool{
 		isDraining: false,
 		rw:         rw{stack: make(map[*socket]int)},
@@ -78,9 +77,9 @@ func NewSocketPool(urls []string, pingInt time.Duration) *SocketPool {
 		serverURLs:   urls,
 		pingInterval: pingInt,
 
-		Inbound:             make(chan Message, 200),
-		Outbound:            make(chan Message, 200),
-		s2p:                 make(chan Message, 200),
+		Inbound:             make(chan *Message, 200),
+		Outbound:            make(chan *Message, 200),
+		s2p:                 make(chan *Message, 200),
 		stopReadControl:     make(chan *sync.WaitGroup),
 		stopWriteControl:    make(chan *sync.WaitGroup),
 		stopShutdownControl: make(chan *sync.WaitGroup),
