@@ -9,8 +9,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Control method launches ControlShutdown(), ControlRead(), ControlWrite(), and ControlPing()
-func (p *Pool) Control() {
+// control method launches ControlShutdown(), ControlRead(), ControlWrite(), and ControlPing()
+func (p *Pool) control() {
 	go p.controlShutdown()
 	go p.controlRead()
 	go p.controlWrite()
