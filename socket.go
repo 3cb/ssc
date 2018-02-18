@@ -3,7 +3,6 @@ package ssc
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -101,7 +100,6 @@ func (s *socket) read(p *SocketPool) {
 	for {
 		select {
 		case <-s.rQuit:
-			log.Printf("quit signal received by %v READ Goroutine. shutting down.\n", s.id)
 			p.shutdown <- s
 			return
 		default:
@@ -123,7 +121,6 @@ func (s *socket) write(p *SocketPool) {
 	for {
 		select {
 		case <-s.wQuit:
-			log.Printf("quit signal received by %v WRITE goroutine. shutting down.\n", s.id)
 			p.shutdown <- s
 			return
 		case msg := <-s.pool2Socket:

@@ -81,7 +81,7 @@ func (p *SocketPool) controlShutdown() {
 				if len(s.errors) > 0 {
 					fmt.Printf("\nSocket ID: %v\nAddr: %vClosed due to error: %s\nTime: %v\n", s.id, s.connection.RemoteAddr(), s.errors, time.Now())
 				} else {
-					fmt.Printf("\nSocket ID: %v\nClosed due to quit signal\nTime: %v\n", s.id, time.Now())
+					fmt.Printf("\nSocket ID: %v\nAddr: %vClosed due to quit signal\nTime: %v\n", s.id, s.connection.RemoteAddr(), time.Now())
 				}
 			}
 
