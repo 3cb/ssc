@@ -107,6 +107,25 @@ func (p *SocketPool) Start() error {
 	return nil
 }
 
+// Write takes a *Message and writes it to a Socket based on Message.ID
+// If Message.ID is an empty string or doesn't match an existing ID in the Stack will return an error
+func (p *SocketPool) Write(msg *Message) error {
+	switch id := msg.ID; id {
+	case "":
+		return errors.New("cannot send message -- id string is empty")
+	default:
+		p.rw.mtx.RLock()
+		for s := range p.rw.stack {
+			if id == s.id {
+				s.pool2Socket <- msg
+				return nil
+			}
+		}
+		p.rw.mtx.RUnlock()
+	}
+	return errors.New("cannot send message -- socket id does not exist")
+}
+
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
 // New connection will adopt existing pool configuration(SocketPool.Config)
 func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
