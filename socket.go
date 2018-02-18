@@ -31,10 +31,10 @@ func newSocketInstance(id string) *socket {
 }
 
 // connectClient connects to a websocket using websocket.Upgrader.Upgrade() method and starts goroutine/s for read and write
-func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (bool, error) {
+func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		return false, err
+		return err
 	}
 	s.connection = c
 	s.connection.SetPongHandler(func(appData string) error {
@@ -60,15 +60,15 @@ func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	go s.read(p)
 	go s.write(p)
 
-	return true, nil
+	return nil
 }
 
 // connectServer connects to websocket given a url string from SocketPool.
 // starts goroutines for read and write
-func (s *socket) connectServer(p *SocketPool) (bool, error) {
+func (s *socket) connectServer(p *SocketPool) error {
 	c, resp, err := websocket.DefaultDialer.Dial(s.id, nil)
 	if resp.StatusCode != 101 || err != nil {
-		return false, err
+		return err
 	}
 	s.connection = c
 	s.connection.SetPingHandler(func(appData string) error {
@@ -92,7 +92,7 @@ func (s *socket) connectServer(p *SocketPool) (bool, error) {
 	go s.read(p)
 	go s.write(p)
 
-	return true, nil
+	return nil
 }
 
 // read runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller

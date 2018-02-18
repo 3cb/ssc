@@ -68,9 +68,9 @@ type ping struct {
 
 // NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
 // If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
-func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
+func NewSocketPool(urls []string, pingInt time.Duration) *SocketPool {
 
-	pool := &SocketPool{
+	return &SocketPool{
 		isDraining: false,
 		rw:         rw{stack: make(map[*socket]int)},
 		ping:       ping{stack: make(map[*socket]int)},
@@ -88,22 +88,24 @@ func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
 		shutdown:            make(chan *socket, 200),
 		allClosed:           make(chan struct{}),
 	}
+}
 
-	pool.Control()
+// Start spins up control goroutines and connects to websockets(if server pool)
+func (p *SocketPool) Start() error {
+	p.Control()
 
-	if len(pool.serverURLs) > 0 {
-		for _, url := range pool.serverURLs {
+	if len(p.serverURLs) > 0 {
+		for _, url := range p.serverURLs {
 			s := newSocketInstance(url)
-			success, err := s.connectServer(pool)
-			if success {
-				log.Printf("Connected to websocket(%v)\n", url)
-			} else {
-				log.Printf("Error connecting to websocket(%v): %v\n", url, err)
+			err := s.connectServer(p)
+			if err != nil {
+				p.Drain()
+				return err
 			}
+			log.Printf("Connected to websocket(%v)\n", url)
 		}
 	}
-
-	return pool, nil
+	return nil
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
@@ -113,11 +115,11 @@ func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w 
 		return errors.New("pool is draining -- cannot add new websocket connection")
 	}
 	s := newSocketInstance(id)
-	success, err := s.connectClient(p, upgrader, w, r)
-	if success {
-		return nil
+	err := s.connectClient(p, upgrader, w, r)
+	if err != nil {
+		return err
 	}
-	return err
+	return nil
 }
 
 // AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
@@ -127,11 +129,9 @@ func (p *SocketPool) AddServerSocket(url string) error {
 		return errors.New("pool is draining -- cannot add new websocket connection")
 	}
 	s := newSocketInstance(url)
-	success, err := s.connectServer(p)
-	if success {
-		log.Printf("Connected to websocket(%v)\n", url)
-	} else {
-		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
+	err := s.connectServer(p)
+	if err != nil {
+		return err
 	}
 	return nil
 }
