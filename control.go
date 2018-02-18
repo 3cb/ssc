@@ -66,6 +66,9 @@ func (p *Pool) controlShutdown() {
 			log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
+		case s := <-p.remove:
+			s.rQuit <- struct{}{}
+			s.wQuit <- struct{}{}
 		case s := <-p.shutdown:
 			closed := false
 			p.rw.mtx.Lock()
@@ -123,8 +126,7 @@ func (p *Pool) controlPing() {
 					p.ping.stack[s]++
 					s.p2s <- &Message{Type: websocket.PingMessage}
 				} else {
-					s.rQuit <- struct{}{}
-					s.wQuit <- struct{}{}
+					p.remove <- s
 				}
 			}
 			p.ping.mtx.Unlock()

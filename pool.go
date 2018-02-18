@@ -48,6 +48,9 @@ type Pool struct {
 	stopShutdownControl chan *sync.WaitGroup
 	stopPingControl     chan *sync.WaitGroup
 
+	// remove sends *socket to controlShutdown() so that it can send quit signals to that socket's read and write goroutines
+	remove chan *socket
+
 	// Shutdown channel carries messages from read/write goroutines to ControlShutdown() goroutine
 	shutdown chan *socket
 
@@ -161,7 +164,7 @@ func (p *Pool) AddServerSocket(url string) error {
 	return nil
 }
 
-// RemoveSocket takes an id string and sends quit signals to the read and write goroutines
+// RemoveSocket takes an id string and sends *socket to controlShutdown goroutine via remove chan
 // returns an error if the id string is empty or is not in the stack
 func (p *Pool) RemoveSocket(id string) error {
 	switch id {
@@ -171,8 +174,7 @@ func (p *Pool) RemoveSocket(id string) error {
 		p.rw.mtx.RLock()
 		for s := range p.rw.stack {
 			if id == s.id {
-				s.rQuit <- struct{}{}
-				s.wQuit <- struct{}{}
+				p.remove <- s
 				p.rw.mtx.RUnlock()
 				return nil
 			}
@@ -196,8 +198,7 @@ func (p *Pool) Stop() {
 	}
 	p.rw.mtx.RLock()
 	for s := range p.rw.stack {
-		s.rQuit <- struct{}{}
-		s.wQuit <- struct{}{}
+		p.remove <- s
 	}
 	p.rw.mtx.RUnlock()
 
