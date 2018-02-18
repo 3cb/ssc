@@ -33,6 +33,7 @@ type SocketPool struct {
 	pingInterval time.Duration
 
 	// Inbound channel carries messages from caller application to WriteControl() method
+	// Messages sent into Inbound channel will be written to ALL connections in stack
 	Inbound chan *Message
 
 	// Outbound channel carries messages from ReadControl() method to caller application
@@ -108,7 +109,7 @@ func (p *SocketPool) Start() error {
 }
 
 // Write takes a *Message and writes it to a Socket based on Message.ID
-// If Message.ID is an empty string or doesn't match an existing ID in the Stack will return an error
+// If Message.ID is an empty string or doesn't match an existing ID in the stack will return an error
 func (p *SocketPool) Write(msg *Message) error {
 	switch id := msg.ID; id {
 	case "":
@@ -124,6 +125,11 @@ func (p *SocketPool) Write(msg *Message) error {
 		p.rw.mtx.RUnlock()
 	}
 	return errors.New("cannot send message -- socket id does not exist")
+}
+
+// WriteAll takes a *Message and writes it to all sockets in stack
+func (p *SocketPool) WriteAll(msg *Message) {
+	p.Inbound <- msg
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool
