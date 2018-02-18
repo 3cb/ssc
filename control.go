@@ -35,7 +35,7 @@ func (p *Pool) controlRead() {
 	}
 }
 
-// controlWrite runs an infinite loop to take messages from inbound channel and send to write goroutines
+// controlWrite runs an infinite loop to take messages from inbound channel and send to ALL write goroutines
 func (p *Pool) controlWrite() {
 	log.Printf("ControlWrite started at %v\n", time.Now())
 
@@ -55,7 +55,8 @@ func (p *Pool) controlWrite() {
 	}
 }
 
-// controlShutdown method listens for Error Messages and dispatches shutdown messages
+// controlShutdown method listens for Error Messages and closes socket connections and removes them from stack
+// is Stop() method has been called, will signal that all read/write goroutines have been stoppped so that control goroutines and then be shut down
 func (p *Pool) controlShutdown() {
 	log.Printf("ControlShutdown started at %v\n", time.Now())
 
@@ -96,7 +97,7 @@ func (p *Pool) controlShutdown() {
 	}
 }
 
-// controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined in Config
+// controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined with NewPool()
 func (p *Pool) controlPing() {
 	log.Printf("ControlPing started at %v\n", time.Now())
 
