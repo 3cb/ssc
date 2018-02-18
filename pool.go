@@ -160,8 +160,8 @@ func (p *Pool) AddServerSocket(url string) error {
 	return nil
 }
 
-// Drain shuts down all read and write goroutines as well as all control goroutines
-func (p *Pool) Drain() {
+// Stop shuts down all read and write goroutines as well as all control goroutines
+func (p *Pool) Stop() {
 	p.mtx.Lock()
 	p.isDraining = true
 	p.mtx.Unlock()
