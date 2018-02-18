@@ -11,170 +11,179 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// SocketPool is a collection of websocket connections combined with
+// Message contains type and payload as a normal websocket message
+// ID is added in case user needs to identify source
+type Message struct {
+	ID      string
+	Type    int
+	Payload []byte
+}
+
+// Pool is a collection of websocket connections combined with
 // channels which are used to send and received messages to and from
 // the goroutines that control them
-type SocketPool struct {
-	Locked bool
-	Readers
-	Writers
-	Pingers
-	*Pipes
+type Pool struct {
+	mtx        sync.RWMutex
+	isDraining bool
+	rw
+	ping
 
-	// These fields are set during initialization
-	ServerURLs   []string
-	PingInterval time.Duration
-}
+	// These fields are set with NewPool parameters
+	serverURLs   []string
+	pingInterval time.Duration
 
-// Readers contains map of sockets with read goroutines
-type Readers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]bool
-}
-
-// Writers contains map of sockets with write goroutines
-type Writers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]bool
-}
-
-// Pingers contains map of sockets being pinged
-type Pingers struct {
-	mtx   sync.RWMutex
-	Stack map[*Socket]int
-}
-
-// ClosedURLs contains map of all URLs of closed server websockets
-type ClosedURLs struct {
-	mtx   sync.RWMutex
-	Stack map[string]bool
-}
-
-// Pipes contains data communication channels:
-type Pipes struct {
 	// Inbound channel carries messages from caller application to WriteControl() method
-	Inbound chan Message
+	// Messages sent into Inbound channel will be written to ALL connections in stack
+	Inbound chan *Message
 
 	// Outbound channel carries messages from ReadControl() method to caller application
-	Outbound chan Message
+	Outbound chan *Message
 
-	// Socket2Pool channel carries messages from Read goroutines to ReadControl() method
-	Socket2Pool chan Message
+	// s2p channel carries messages from Read goroutines to ReadControl() method(i.e., socket to pool)
+	s2p chan *Message
 
-	// Stop channels are used to shutdown control goroutines
-	StopReadControl     chan *sync.WaitGroup
-	StopWriteControl    chan *sync.WaitGroup
-	StopShutdownControl chan *sync.WaitGroup
-	StopPingControl     chan *sync.WaitGroup
+	// stop channels are used to stop control goroutines
+	stopReadControl     chan *sync.WaitGroup
+	stopWriteControl    chan *sync.WaitGroup
+	stopShutdownControl chan *sync.WaitGroup
+	stopPingControl     chan *sync.WaitGroup
 
-	// Error channel carries messages from read/write goroutines to ControlShutdown() goroutine
-	Error chan ErrorMsg
+	// Shutdown channel carries messages from read/write goroutines to ControlShutdown() goroutine
+	shutdown chan *socket
+
+	// allClosed alerts pool.Drain() that all read/write goroutines have been stopped and all websockets have been disconnected
+	allClosed chan struct{}
 }
 
-// NewSocketPool creates a new instance of SocketPool and returns a pointer to it and an error
-// If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
-func NewSocketPool(urls []string, pingInt time.Duration) (*SocketPool, error) {
-	pipes := &Pipes{}
-	pipes.Inbound = make(chan Message)
-	pipes.Outbound = make(chan Message)
-	pipes.Socket2Pool = make(chan Message)
+// rw contains map of sockets with read and write goroutines
+type rw struct {
+	mtx   sync.RWMutex
+	stack map[*socket]int
+}
 
-	pipes.StopReadControl = make(chan *sync.WaitGroup)
-	pipes.StopWriteControl = make(chan *sync.WaitGroup)
-	pipes.StopShutdownControl = make(chan *sync.WaitGroup)
-	pipes.StopPingControl = make(chan *sync.WaitGroup)
+// ping holds map of sockets to keep track of unreturned pings
+type ping struct {
+	mtx   sync.RWMutex
+	stack map[*socket]int
+}
 
-	pipes.Error = make(chan ErrorMsg, 100)
+// NewPool creates a new instance of Pool and returns a pointer to it
+func NewPool(urls []string, pingInt time.Duration) *Pool {
+	return &Pool{
+		isDraining: false,
+		rw:         rw{stack: make(map[*socket]int)},
+		ping:       ping{stack: make(map[*socket]int)},
 
-	pool := &SocketPool{
-		Readers: Readers{Stack: make(map[*Socket]bool)},
-		Writers: Writers{Stack: make(map[*Socket]bool)},
-		Pingers: Pingers{Stack: make(map[*Socket]int)},
-		Pipes:   pipes,
+		serverURLs:   urls,
+		pingInterval: pingInt,
 
-		ServerURLs:   urls,
-		PingInterval: pingInt,
+		Inbound:             make(chan *Message, 200),
+		Outbound:            make(chan *Message, 200),
+		s2p:                 make(chan *Message, 200),
+		stopReadControl:     make(chan *sync.WaitGroup),
+		stopWriteControl:    make(chan *sync.WaitGroup),
+		stopShutdownControl: make(chan *sync.WaitGroup),
+		stopPingControl:     make(chan *sync.WaitGroup),
+		shutdown:            make(chan *socket, 200),
+		allClosed:           make(chan struct{}),
 	}
+}
 
-	pool.Control()
+// Start spins up control goroutines and connects to websockets(if server pool)
+// If slice of urls is nil or empty Pool will be created empty and control methods will be launched and waiting
+func (p *Pool) Start() error {
+	p.control()
 
-	if len(pool.ServerURLs) > 0 {
-		for _, url := range pool.ServerURLs {
+	if len(p.serverURLs) > 0 {
+		for _, url := range p.serverURLs {
 			s := newSocketInstance(url)
-			success, err := s.connectServer(pool)
-			if success {
-				log.Printf("Connected to websocket(%v)\n", url)
-			} else {
-				log.Printf("Error connecting to websocket(%v): %v\n", url, err)
+			err := s.connectServer(p)
+			if err != nil {
+				p.Stop()
+				return err
+			}
+			log.Printf("Connected to websocket(%v)\n", url)
+		}
+	}
+	return nil
+}
+
+// Write takes a *Message and writes it to a Socket based on Message.ID
+// If Message.ID is an empty string or doesn't match an existing ID in the stack Write will return an error
+func (p *Pool) Write(msg *Message) error {
+	switch id := msg.ID; id {
+	case "":
+		return errors.New("cannot send message -- id string is empty")
+	default:
+		p.rw.mtx.RLock()
+		for s := range p.rw.stack {
+			if id == s.id {
+				s.p2s <- msg
+				return nil
 			}
 		}
+		p.rw.mtx.RUnlock()
 	}
-
-	return pool, nil
+	return errors.New("cannot send message -- socket id does not exist")
 }
 
-// AddClientSocket allows caller to add individual websocket connections to an existing pool of connections
-// New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddClientSocket(upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) (*Socket, error) {
-	if p.Locked {
-		return nil, errors.New("pool is locked. cannot add new websocket connection")
-	}
-	s := newSocketInstance("")
-	success, err := s.connectClient(p, upgrader, w, r)
-	if success {
-		return s, nil
-	}
-	return nil, err
+// WriteAll takes a *Message and writes it to all sockets in stack
+func (p *Pool) WriteAll(msg *Message) {
+	p.Inbound <- msg
 }
 
-// AddServerSocket allows caller to add individual websocket connections to an existing pool of connections
-// New connection will adopt existing pool configuration(SocketPool.Config)
-func (p *SocketPool) AddServerSocket(url string) (*Socket, error) {
-	if p.Locked {
-		return nil, errors.New("pool is locked. cannot add new websocket connection")
+// AddClientSocket allows caller to add individual websocket connections to an existing pool
+// New connection will adopt existing pool configuration
+func (p *Pool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
+	if p.isDraining {
+		return errors.New("cannot add new websocket connection -- pool is draining")
+	}
+	s := newSocketInstance(id)
+	err := s.connectClient(p, upgrader, w, r)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// AddServerSocket allows caller to add individual websocket connections to an existing pool
+// New connection will adopt existing pool configuration
+func (p *Pool) AddServerSocket(url string) error {
+	if p.isDraining {
+		return errors.New("cannot add new websocket connection -- pool is draining")
 	}
 	s := newSocketInstance(url)
-	success, err := s.connectServer(p)
-	if success {
-		log.Printf("Connected to websocket(%v)\n", url)
-	} else {
-		log.Printf("Error connecting to websocket(%v): %v\n", url, err)
+	err := s.connectServer(p)
+	if err != nil {
+		return err
 	}
-	return s, nil
+	return nil
 }
 
-func (p *SocketPool) isPingStackEmpty() bool {
-	p.Pingers.mtx.RLock()
-	defer p.Pingers.mtx.RUnlock()
-	if len(p.Pingers.Stack) > 0 {
-		return false
-	}
-	return true
-}
-
-// Drain shuts down all read and write goroutines as well as all control goroutines
-func (p *SocketPool) Drain() {
-	p.Locked = true
-	p.Readers.mtx.RLock()
-	for s, active := range p.Readers.Stack {
-		if active {
-			s.Quit <- struct{}{}
-		}
-	}
-	p.Readers.mtx.RUnlock()
+// Stop shuts down all read and write goroutines as well as all control goroutines
+func (p *Pool) Stop() {
+	p.mtx.Lock()
+	p.isDraining = true
+	p.mtx.Unlock()
 
 	wg := &sync.WaitGroup{}
-	count := 0
-	if p.PingInterval > 0 {
-		count++
+	if p.pingInterval > 0 {
+		wg.Add(1)
+		p.stopPingControl <- wg
+		wg.Wait()
 	}
+	p.rw.mtx.RLock()
+	for s := range p.rw.stack {
+		s.rQuit <- struct{}{}
+		s.wQuit <- struct{}{}
+	}
+	p.rw.mtx.RUnlock()
 
-	wg.Add(3 + count)
-	p.StopReadControl <- wg
-	p.StopWriteControl <- wg
-	p.StopShutdownControl <- wg
-	if p.PingInterval > 0 {
-		p.StopPingControl <- wg
-	}
+	<-p.allClosed
+
+	wg.Add(3)
+	p.stopReadControl <- wg
+	p.stopWriteControl <- wg
+	p.stopShutdownControl <- wg
 	wg.Wait()
 }
