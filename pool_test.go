@@ -12,7 +12,7 @@ package ssc
 // 	"github.com/gorilla/websocket"
 // )
 
-// func TestNewSocketPool(t *testing.T) {
+// func TestNewPool(t *testing.T) {
 // 	upgrader := websocket.Upgrader{}
 // 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 // 		_, err := upgrader.Upgrade(w, r, nil)
@@ -87,9 +87,9 @@ package ssc
 
 // 	for _, c := range tc {
 // 		t.Run(c.name, func(t *testing.T) {
-// 			pool, err := NewSocketPool(c.Config)
+// 			pool, err := NewPool(c.Config)
 // 			if err != nil {
-// 				t.Fatalf("unable to create SocketPool: %v", err)
+// 				t.Fatalf("unable to create Pool: %v", err)
 // 			}
 
 // 			if pool.Locked != c.expected.locked {

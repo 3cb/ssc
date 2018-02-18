@@ -16,15 +16,15 @@ To install the package on your system:
 ```bash
 go get "github.com/3cb/ssc"
 ```
-## SocketPool Layout
-Each WebSocket has its own readSocket and writeSocket goroutine but there is only one instance of each control goroutine per SocketPool:
+## Pool Layout
+Each WebSocket has its own readSocket and writeSocket goroutine but there is only one instance of each control goroutine per Pool:
 
 
 ![Diagram](https://images2.imgbox.com/c6/d5/RbGZhCNw_o.png?download=true)
 
 ## Example Usage
 
-First create an instance of `ssc.SocketPool` by calling `ssc.NewSocketPool()` which takes a configuration object as a parameter:
+First create an instance of `ssc.Pool` by calling `ssc.NewPool()` which takes a configuration object as a parameter:
 ```go
 sockets := []string{
     "wss://api.example.com/ws1",
@@ -39,7 +39,7 @@ config := ssc.Config{
 	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
 }
 
-pool, err := ssc.NewSocketPool(config)
+pool, err := ssc.NewPool(config)
 if err != nil {
     log.Printf("Error starting new Socket Pool.")
 	return
@@ -53,7 +53,7 @@ config := ssc.Config{
 	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
 }
 
-pool, err := ssc.NewSocketPool(config)
+pool, err := ssc.NewPool(config)
 if err != nil {
     log.Printf("Error starting new Socket Pool.")
 	return
@@ -71,7 +71,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(":3000", r))
 }
 
-func wsHandler(pool *ssc.SocketPool, upgrader *websocket.Upgrader) http.Handler {
+func wsHandler(pool *ssc.Pool, upgrader *websocket.Upgrader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		socket, err := pool.AddClientSocket(upgrader, w, r)	// can usually ignore socket with an _
 		if err != nil {

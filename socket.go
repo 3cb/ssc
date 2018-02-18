@@ -30,7 +30,7 @@ func newSocketInstance(id string) *socket {
 }
 
 // connectClient connects to a websocket using websocket.Upgrader.Upgrade() method and starts goroutine/s for read and write
-func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
+func (s *socket) connectClient(p *Pool, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return err
@@ -62,9 +62,9 @@ func (s *socket) connectClient(p *SocketPool, upgrader *websocket.Upgrader, w ht
 	return nil
 }
 
-// connectServer connects to websocket given a url string from SocketPool.
+// connectServer connects to websocket given a url string from Pool.
 // starts goroutines for read and write
-func (s *socket) connectServer(p *SocketPool) error {
+func (s *socket) connectServer(p *Pool) error {
 	c, resp, err := websocket.DefaultDialer.Dial(s.id, nil)
 	if resp.StatusCode != 101 || err != nil {
 		return err
@@ -96,7 +96,7 @@ func (s *socket) connectServer(p *SocketPool) error {
 
 // read runs a continuous loop that reads messages from websocket and sends the []byte to the Pool controller
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors reading from websocket
-func (s *socket) read(p *SocketPool) {
+func (s *socket) read(p *Pool) {
 	for {
 		select {
 		case <-s.rQuit:
@@ -117,7 +117,7 @@ func (s *socket) read(p *SocketPool) {
 
 // write runs a continuous loop that reads []byte messages from the FromPool channel and writes them to the websocket
 // It also listens for shutdown command from Pool and will close connection on command and also close connection on any errors writing from websocket
-func (s *socket) write(p *SocketPool) {
+func (s *socket) write(p *Pool) {
 	for {
 		select {
 		case <-s.wQuit:

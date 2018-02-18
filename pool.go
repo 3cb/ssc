@@ -19,16 +19,16 @@ type Message struct {
 	Payload []byte
 }
 
-// SocketPool is a collection of websocket connections combined with
+// Pool is a collection of websocket connections combined with
 // channels which are used to send and received messages to and from
 // the goroutines that control them
-type SocketPool struct {
+type Pool struct {
 	mtx        sync.RWMutex
 	isDraining bool
 	rw
 	ping
 
-	// These fields are set with NewSocketPool parameters
+	// These fields are set with NewPool parameters
 	serverURLs   []string
 	pingInterval time.Duration
 
@@ -39,10 +39,10 @@ type SocketPool struct {
 	// Outbound channel carries messages from ReadControl() method to caller application
 	Outbound chan *Message
 
-	// Socket2Pool channel carries messages from Read goroutines to ReadControl() method
+	// s2p channel carries messages from Read goroutines to ReadControl() method
 	s2p chan *Message
 
-	// Stop channels are used to stop control goroutines
+	// stop channels are used to stop control goroutines
 	stopReadControl     chan *sync.WaitGroup
 	stopWriteControl    chan *sync.WaitGroup
 	stopShutdownControl chan *sync.WaitGroup
@@ -55,21 +55,21 @@ type SocketPool struct {
 	allClosed chan struct{}
 }
 
-// RW contains map of sockets with read and write goroutines
+// rw contains map of sockets with read and write goroutines
 type rw struct {
 	mtx   sync.RWMutex
 	stack map[*socket]int
 }
 
-// Ping holds map of sockets to keep track of unreturned pings
+// ping holds map of sockets to keep track of unreturned pings
 type ping struct {
 	mtx   sync.RWMutex
 	stack map[*socket]int
 }
 
-// NewSocketPool creates a new instance of SocketPool and returns a pointer to it
-func NewSocketPool(urls []string, pingInt time.Duration) *SocketPool {
-	return &SocketPool{
+// NewPool creates a new instance of Pool and returns a pointer to it
+func NewPool(urls []string, pingInt time.Duration) *Pool {
+	return &Pool{
 		isDraining: false,
 		rw:         rw{stack: make(map[*socket]int)},
 		ping:       ping{stack: make(map[*socket]int)},
@@ -90,8 +90,8 @@ func NewSocketPool(urls []string, pingInt time.Duration) *SocketPool {
 }
 
 // Start spins up control goroutines and connects to websockets(if server pool)
-// If slice of urls is nil or empty SocketPool will be created empty and control methods will be launched and waiting
-func (p *SocketPool) Start() error {
+// If slice of urls is nil or empty Pool will be created empty and control methods will be launched and waiting
+func (p *Pool) Start() error {
 	p.Control()
 
 	if len(p.serverURLs) > 0 {
@@ -110,7 +110,7 @@ func (p *SocketPool) Start() error {
 
 // Write takes a *Message and writes it to a Socket based on Message.ID
 // If Message.ID is an empty string or doesn't match an existing ID in the stack will return an error
-func (p *SocketPool) Write(msg *Message) error {
+func (p *Pool) Write(msg *Message) error {
 	switch id := msg.ID; id {
 	case "":
 		return errors.New("cannot send message -- id string is empty")
@@ -128,13 +128,13 @@ func (p *SocketPool) Write(msg *Message) error {
 }
 
 // WriteAll takes a *Message and writes it to all sockets in stack
-func (p *SocketPool) WriteAll(msg *Message) {
+func (p *Pool) WriteAll(msg *Message) {
 	p.Inbound <- msg
 }
 
 // AddClientSocket allows caller to add individual websocket connections to an existing pool
 // New connection will adopt existing pool configuration
-func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
+func (p *Pool) AddClientSocket(id string, upgrader *websocket.Upgrader, w http.ResponseWriter, r *http.Request) error {
 	if p.isDraining {
 		return errors.New("cannot add new websocket connection -- pool is draining")
 	}
@@ -148,7 +148,7 @@ func (p *SocketPool) AddClientSocket(id string, upgrader *websocket.Upgrader, w 
 
 // AddServerSocket allows caller to add individual websocket connections to an existing pool
 // New connection will adopt existing pool configuration
-func (p *SocketPool) AddServerSocket(url string) error {
+func (p *Pool) AddServerSocket(url string) error {
 	if p.isDraining {
 		return errors.New("cannot add new websocket connection -- pool is draining")
 	}
@@ -161,7 +161,7 @@ func (p *SocketPool) AddServerSocket(url string) error {
 }
 
 // Drain shuts down all read and write goroutines as well as all control goroutines
-func (p *SocketPool) Drain() {
+func (p *Pool) Drain() {
 	p.mtx.Lock()
 	p.isDraining = true
 	p.mtx.Unlock()
