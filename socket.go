@@ -115,6 +115,7 @@ func (s *socket) read(p *Pool) {
 				s.wQuit <- struct{}{}
 				s.errors = append(s.errors, err)
 				p.shutdown <- s
+				p.s2p <- &Message{ID: s.id, Type: msgType, Payload: msg}
 				return
 			}
 			p.s2p <- &Message{ID: s.id, Type: msgType, Payload: msg}
