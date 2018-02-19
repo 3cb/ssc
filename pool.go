@@ -23,7 +23,7 @@ type Message struct {
 // channels which are used to send and received messages to and from
 // the goroutines that control them
 type Pool struct {
-	mtx        sync.RWMutex
+	mtx        sync.Mutex
 	isDraining bool
 	rw
 	ping
