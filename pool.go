@@ -178,7 +178,7 @@ func (p *Pool) AddServerSocket(url string) error {
 func (p *Pool) RemoveSocket(id string) error {
 	switch id {
 	case "":
-		return errors.New("emptry string -- cannot remove socket without proper id")
+		return errors.New("empty string -- cannot remove socket without proper id")
 	default:
 		p.rw.mtx.RLock()
 		for s := range p.rw.stack {
