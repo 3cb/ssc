@@ -111,6 +111,14 @@ func (p *Pool) Start() error {
 	return nil
 }
 
+// Count returns the numbers of current websocket connection in stack
+func (p *Pool) Count() int {
+	p.rw.mtx.RLock()
+	count := len(p.rw.stack)
+	p.rw.mtx.RUnlock()
+	return count
+}
+
 // Write takes a *Message and writes it to a Socket based on Message.ID
 // If Message.ID is an empty string or doesn't match an existing ID in the stack Write will return an error
 func (p *Pool) Write(msg *Message) error {
