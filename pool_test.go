@@ -1,116 +1,191 @@
 // Package ssc creates and controls pools of websocket connections --  client and server
 package ssc
 
-// import (
-// 	"fmt"
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"net/url"
-// 	"testing"
-// 	"time"
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+	"time"
 
-// 	"github.com/gorilla/websocket"
-// )
+	"github.com/gorilla/websocket"
+)
 
-// func TestNewPool(t *testing.T) {
-// 	upgrader := websocket.Upgrader{}
-// 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		_, err := upgrader.Upgrade(w, r, nil)
-// 		if err != nil {
-// 			t.Fatalf("failed to start test server1: %v", err)
-// 		}
-// 	}))
-// 	u1, _ := url.Parse(srv1.URL)
-// 	u1.Scheme = "ws"
-// 	_, _, err := websocket.DefaultDialer.Dial(u1.String(), nil)
-// 	if err != nil {
-// 		t.Fatalf("unable to make websocket connection: %v", err)
-// 	}
+func TestPoolServer(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("failed to start test server1: %v", err)
+		}
+		for {
+			msgType, msg, _ := conn.ReadMessage()
+			if msgType == websocket.CloseMessage {
+				break
+			}
+			err = conn.WriteMessage(msgType, msg)
+			if err != nil {
+				t.Fatalf("error writing to socket: %s", err)
+			}
+			_ = conn.WriteMessage(websocket.PingMessage, []byte(""))
+		}
 
-// 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		_, err := upgrader.Upgrade(w, r, nil)
-// 		if err != nil {
-// 			t.Fatalf("failed to start test server1: %v", err)
-// 		}
-// 	}))
-// 	u2, _ := url.Parse(srv2.URL)
-// 	u2.Scheme = "ws"
-// 	_, _, err = websocket.DefaultDialer.Dial(u2.String(), nil)
-// 	if err != nil {
-// 		t.Fatalf("unable to make websocket connection: %v", err)
-// 	}
+	}))
+	u1, _ := url.Parse(srv1.URL)
+	u1.Scheme = "ws"
 
-// 	urls := []string{fmt.Sprint(u1), fmt.Sprint(u2)}
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("failed to start test server1: %v", err)
+		}
+		for {
+			msgType, msg, _ := conn.ReadMessage()
+			if msgType == websocket.CloseMessage {
+				break
+			}
+			err = conn.WriteMessage(msgType, msg)
+			if err != nil {
+				t.Fatalf("error writing to socket: %s", err)
+			}
+		}
+	}))
+	u2, _ := url.Parse(srv2.URL)
+	u2.Scheme = "ws"
 
-// 	type expected struct {
-// 		locked bool
-// 		reader bool
-// 		writer bool
-// 		pinger int
-// 	}
+	srv3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatalf("failed to start test server1: %v", err)
+		}
+		for {
+			msgType, msg, _ := conn.ReadMessage()
+			if msgType == websocket.CloseMessage {
+				break
+			}
+			err = conn.WriteMessage(msgType, msg)
+			if err != nil {
+				t.Fatalf("error writing to socket: %s", err)
+			}
+		}
+	}))
+	u3, _ := url.Parse(srv3.URL)
+	u3.Scheme = "ws"
 
-// 	tc := []struct {
-// 		name string
-// 		expected
-// 	}{
-// 		{
-// 			"read-only no ping",
-// 			Config{urls, true, false, time.Second * 0},
-// 			expected{false, true, false, 0},
-// 		},
-// 		{
-// 			"read-only ping",
-// 			Config{urls, true, false, time.Second * 20},
-// 			expected{false, true, false, 0},
-// 		},
-// 		{
-// 			"write-only no ping",
-// 			Config{urls, false, true, time.Second * 0},
-// 			expected{false, false, true, 0},
-// 		},
-// 		{
-// 			"write-only ping",
-// 			Config{urls, false, true, time.Second * 50},
-// 			expected{false, false, true, 0},
-// 		},
-// 		{
-// 			"read-write no ping",
-// 			Config{urls, true, true, time.Second * 0},
-// 			expected{false, true, true, 0},
-// 		},
-// 		{
-// 			"read-write ping",
-// 			Config{urls, true, true, time.Second * 15},
-// 			expected{false, true, true, 0},
-// 		},
-// 	}
+	// slice of websocket servers
+	urls := []string{u1.String(), u2.String()}
 
-// 	for _, c := range tc {
-// 		t.Run(c.name, func(t *testing.T) {
-// 			pool, err := NewPool(c.Config)
-// 			if err != nil {
-// 				t.Fatalf("unable to create Pool: %v", err)
-// 			}
+	// start empty server pool
+	pool := NewPool(urls, time.Second*30)
 
-// 			if pool.Locked != c.expected.locked {
-// 				t.Errorf("expected Locked to be 'false'; got true")
-// 			}
-// 			for socket, v := range pool.Readers.Stack {
-// 				// test reader stack value
-// 				if v != c.expected.reader {
-// 					t.Errorf("expected reader to be %v; got %v", c.expected.reader, v)
-// 				}
-// 				// test writer stack value
-// 				if pool.Writers.Stack[socket] != c.expected.writer {
-// 					t.Errorf("expected writer to be %v; got %v", c.expected.writer, pool.Writers.Stack[socket])
-// 				}
-// 				// text pinger stack value
-// 				if pool.Pingers.Stack[socket] != c.expected.pinger {
-// 					t.Errorf("expected pinger to be %v; got %v", c.expected.pinger, pool.Pingers.Stack[socket])
-// 				}
+	t.Run("test Start", func(t *testing.T) {
+		err := pool.Start()
+		if err != nil {
+			t.Fatalf("unable to start socket pool: %s", err)
+		}
+		got := pool.Count()
+		if got != len(urls) {
+			t.Errorf("not all sockets connected: expected %v; got %v", len(urls), got)
+		}
 
-// 			}
-// 		})
+	})
 
-// 	}
-// }
+	t.Run("test AddServerSocket", func(t *testing.T) {
+		before := pool.Count()
+		err := pool.AddServerSocket(u3.String())
+		if err != nil {
+			t.Errorf("unable to connect to ws server: %s", err)
+		}
+		after := pool.Count()
+		if after != before+1 {
+			t.Errorf("not all sockets connected: expected %v; got %v", before+1, after)
+		}
+	})
+
+	// t.Run("test RemoveSocket", func(t *testing.T) {
+	// 	before := pool.Count()
+	// 	err := pool.RemoveSocket(u3.String())
+	// 	if err != nil {
+	// 		t.Errorf("unable to remove socket from stack")
+	// 	}
+	// 	time.Sleep(time.Second * 10)
+	// 	after := pool.Count()
+	// 	if after != before-1 {
+	// 		t.Errorf("socket was not removed from stack: expected length %v; got length %v", before-1, after)
+	// 	}
+	// })
+
+	t.Run("test WriteAll", func(t *testing.T) {
+		msg := &Message{
+			ID:      "",
+			Type:    websocket.TextMessage,
+			Payload: []byte("test message!"),
+		}
+		count := pool.Count()
+		pool.WriteAll(msg)
+		for i := 0; i < count; i++ {
+			got := <-pool.Outbound
+			if got.Type != msg.Type {
+				t.Errorf("wrong message type: expected %v; got %v", msg.Type, got.Type)
+			}
+			if string(got.Payload) != string(msg.Payload) {
+				t.Errorf("wrong payload: expected %v; got %v", string(msg.Payload), string(got.Payload))
+			}
+		}
+	})
+
+	t.Run("test Write", func(t *testing.T) {
+		// test correct message format
+		for _, url := range urls {
+			msg := &Message{
+				ID:      url,
+				Type:    websocket.TextMessage,
+				Payload: []byte("test message!"),
+			}
+			err := pool.Write(msg)
+			if err != nil {
+				t.Fatalf("unable to write to pool socket: %s", err)
+			}
+			got := <-pool.Outbound
+			if got.ID != msg.ID {
+				t.Errorf("wrong socket ID: expected %v; got %v", msg.ID, got.ID)
+			}
+			if got.Type != msg.Type {
+				t.Errorf("wrong message type: expected %v; got %v", msg.Type, got.Type)
+			}
+			if string(got.Payload) != string(msg.Payload) {
+				t.Errorf("wrong payload: expected %v; got %v", string(msg.Payload), string(got.Payload))
+			}
+		}
+
+		// test bad message formats(empty string and id not in stack)
+		for _ = range urls {
+			err := pool.Write(&Message{
+				ID:      "",
+				Type:    websocket.TextMessage,
+				Payload: []byte("test message!"),
+			})
+			if err == nil {
+				t.Errorf("Write method did not return error for empty ID string")
+			}
+			err = pool.Write(&Message{
+				ID:      "non-existent ID",
+				Type:    websocket.TextMessage,
+				Payload: []byte("test message!"),
+			})
+			if err == nil {
+				t.Errorf("Write method did not return error for ID string not in stack")
+			}
+		}
+	})
+
+	// t.Run("test Stop", func(t *testing.T) {
+	// 	before := pool.Count()
+	// 	pool.Stop()
+	// 	after := pool.Count()
+
+	// 	if before == after || after != 0 {
+	// 		t.Errorf("Stop method did not remove all sockets from stack")
+	// 	}
+	// })
+}
