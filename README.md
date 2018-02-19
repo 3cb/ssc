@@ -32,30 +32,18 @@ sockets := []string{
     "wss://api.example.com/ws3",
 }
 
-config := ssc.Config{
-        ServerURLs: sockets,
-	IsReadable: true,
-	IsWritable: true,
-	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
-}
-
-pool, err := ssc.NewPool(config)
+pool, err := ssc.NewPool(sockets, time.Second*45)
 if err != nil {
-    log.Printf("Error starting new Socket Pool.")
+    log.Fatalf("Error starting new Socket Pool.")
 	return
 }
 ```
-The above example starts a pool of websocket server connections.  In order to start an empty pool which is ready for client websockets to connect, use a config object without a slice of url strings:
+The above example starts a pool of websocket server connections.  In order to start an empty pool which is ready for client websockets to connect, send an empty slice for the first parameter:
 ```go
-config := ssc.Config{
-	IsReadable: true,
-	IsWritable: true,
-	PingInterval: time.Second*45,  //minimum of 30 seconds - if 0, pool will NOT ping sockets!!
-}
 
-pool, err := ssc.NewPool(config)
+pool, err := ssc.NewPool([]string{}, time.Second*45])
 if err != nil {
-    log.Printf("Error starting new Socket Pool.")
+    log.Fatalf("Error starting new Socket Pool.")
 	return
 }
 ```
@@ -73,7 +61,7 @@ func main() {
 
 func wsHandler(pool *ssc.Pool, upgrader *websocket.Upgrader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		socket, err := pool.AddClientSocket(upgrader, w, r)	// can usually ignore socket with an _
+		err := pool.AddClientSocket("clientID", upgrader, w, r)
 		if err != nil {
 			// handle error
 		}
@@ -81,7 +69,7 @@ func wsHandler(pool *ssc.Pool, upgrader *websocket.Upgrader) http.Handler {
 	})
 }
 ```
-Shutdown Socket Pool and cleanup all running goroutines by using `pool.Drain()`.  This method will shutdown all read/write goroutines and then shut down all control goroutines that are running.
+Shutdown Pool and cleanup all running goroutines by using `pool.Stop()`.  This method will shutdown all read/write goroutines and then shut down all control goroutines that are running.
 
 Usage for server WebSockets here: https://github.com/3cb/gemini_clone/tree/go_stream
 
