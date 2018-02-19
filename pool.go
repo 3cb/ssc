@@ -87,6 +87,7 @@ func NewPool(urls []string, pingInt time.Duration) *Pool {
 		stopWriteControl:    make(chan *sync.WaitGroup),
 		stopShutdownControl: make(chan *sync.WaitGroup),
 		stopPingControl:     make(chan *sync.WaitGroup),
+		remove:              make(chan *socket, 200),
 		shutdown:            make(chan *socket, 200),
 		allClosed:           make(chan struct{}),
 	}
