@@ -4,6 +4,7 @@ package ssc
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -115,7 +116,6 @@ func (s *socket) read(p *Pool) {
 				s.wQuit <- struct{}{}
 				s.errors = append(s.errors, err)
 				p.shutdown <- s
-				p.s2p <- &Message{ID: s.id, Type: msgType, Payload: msg}
 				return
 			}
 			p.s2p <- &Message{ID: s.id, Type: msgType, Payload: msg}
@@ -145,9 +145,6 @@ func (s *socket) write(p *Pool) {
 
 // close closes the websocket connection
 func (s *socket) close() bool {
-	err := s.connection.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err != nil {
-		s.connection.Close()
-	}
+	s.connection.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Time{})
 	return true
 }
