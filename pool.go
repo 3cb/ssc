@@ -88,7 +88,9 @@ func NewPool(urls []string, pingInt time.Duration) *Pool {
 // Start spins up control goroutines and connects to websockets(if server pool)
 // If slice of urls is nil or empty Pool will be created empty and control methods will be launched and waiting
 func (p *Pool) Start() error {
-	p.control()
+	go p.controlRead()
+	go p.controlWrite()
+	go p.controlShutdown()
 
 	if len(p.serverURLs) > 0 {
 		for _, url := range p.serverURLs {

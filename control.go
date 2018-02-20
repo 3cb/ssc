@@ -9,13 +9,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// control method launches ControlShutdown(), ControlRead(), ControlWrite(), and ControlPing()
-func (p *Pool) control() {
-	go p.controlShutdown()
-	go p.controlRead()
-	go p.controlWrite()
-}
-
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *Pool) controlRead() {
 	log.Printf("ControlRead started at %v\n", time.Now())
