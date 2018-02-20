@@ -45,7 +45,6 @@ type Pool struct {
 	stopReadControl     chan *sync.WaitGroup
 	stopWriteControl    chan *sync.WaitGroup
 	stopShutdownControl chan *sync.WaitGroup
-	stopPingControl     chan *sync.WaitGroup
 
 	// remove sends *socket to controlShutdown() so that it can send quit signals to that socket's read and write goroutines
 	remove chan *socket
@@ -78,7 +77,6 @@ func NewPool(urls []string, pingInt time.Duration) *Pool {
 		stopReadControl:     make(chan *sync.WaitGroup),
 		stopWriteControl:    make(chan *sync.WaitGroup),
 		stopShutdownControl: make(chan *sync.WaitGroup),
-		stopPingControl:     make(chan *sync.WaitGroup),
 		remove:              make(chan *socket, 200),
 		shutdown:            make(chan *socket, 200),
 		allClosed:           make(chan struct{}),
@@ -205,11 +203,6 @@ func (p *Pool) Stop() {
 	p.mtx.Unlock()
 
 	wg := &sync.WaitGroup{}
-	if p.pingInterval > 0 {
-		wg.Add(1)
-		p.stopPingControl <- wg
-		wg.Wait()
-	}
 	p.rw.mtx.RLock()
 	if len(p.rw.stack) > 0 {
 		for s := range p.rw.stack {
