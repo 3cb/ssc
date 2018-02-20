@@ -144,7 +144,7 @@ func (s *socket) write(p *Pool) {
 }
 
 // close closes the websocket connection
-func (s *socket) close() bool {
+func (s *socket) close() {
 	s.connection.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Time{})
-	return true
+	s.connection.Close()
 }
