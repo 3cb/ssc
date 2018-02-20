@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -190,7 +191,7 @@ func TestPoolServer(t *testing.T) {
 }
 
 func TestPoolClient(t *testing.T) {
-	pool := NewPool([]string{}, time.Second*30)
+	pool := NewPool([]string{}, time.Second*5)
 	pool.Start()
 
 	upgrader := &websocket.Upgrader{}
@@ -228,5 +229,63 @@ func TestPoolClient(t *testing.T) {
 		if got != expected {
 			t.Errorf("socket not added to stack: expected %v; got %v", expected, got)
 		}
+	})
+
+	// test writeControl with Ping
+	t.Run("test Ping", func(t *testing.T) {
+		time.Sleep(time.Second * 8)
+	})
+
+	t.Run("test StopControl", func(t *testing.T) {
+		wg := &sync.WaitGroup{}
+		wg.Add(3)
+		pool.stopReadControl <- wg
+		pool.stopWriteControl <- wg
+		pool.stopShutdownControl <- wg
+		wg.Wait()
+	})
+}
+
+func TestWriteControlNoPing(t *testing.T) {
+	pool := NewPool([]string{}, time.Second*0)
+	pool.Start()
+
+	upgrader := &websocket.Upgrader{}
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := pool.AddClientSocket("client1", upgrader, w, r)
+		if err != nil {
+			t.Fatalf("unable to connect new client socket: %s", err)
+		}
+		pool.WriteAll(&Message{
+			Type:    websocket.TextMessage,
+			Payload: []byte("Hello!"),
+		})
+	}))
+	u1, _ := url.Parse(srv1.URL)
+	u1.Scheme = "ws"
+
+	conn, _, err := websocket.DefaultDialer.Dial(u1.String(), nil)
+	if err != nil {
+		t.Fatalf("unable to connect to socket server: %s", err)
+	}
+	msgType, msg, err := conn.ReadMessage()
+	if err != nil {
+		t.Errorf("error reading message from pool to client: %s", err)
+	}
+	if msgType != websocket.TextMessage {
+		t.Errorf("wrong message type: expected %v; got %v", websocket.TextMessage, msgType)
+	}
+	if string(msg) != "Hello!" {
+		t.Errorf("wrong message received: expected %v; got %v", "Hello!", string(msg))
+	}
+
+	// test stopWriteControl without Ping
+	t.Run("test StopControl", func(t *testing.T) {
+		wg := &sync.WaitGroup{}
+		wg.Add(3)
+		pool.stopReadControl <- wg
+		pool.stopWriteControl <- wg
+		pool.stopShutdownControl <- wg
+		wg.Wait()
 	})
 }
