@@ -120,6 +120,17 @@ func (p *Pool) Count() int {
 	return count
 }
 
+// List returns a []string with ids of each socket in stack
+func (p *Pool) List() []string {
+	list := []string{}
+	p.rw.mtx.RLock()
+	for s := range p.rw.stack {
+		list = append(list, s.id)
+	}
+	p.rw.mtx.RUnlock()
+	return list
+}
+
 // Write takes a *Message and writes it to a Socket based on Message.ID
 // If Message.ID is an empty string or doesn't match an existing ID in the stack Write will return an error
 func (p *Pool) Write(msg *Message) error {
@@ -206,8 +217,10 @@ func (p *Pool) Stop() {
 		wg.Wait()
 	}
 	p.rw.mtx.RLock()
-	for s := range p.rw.stack {
-		p.remove <- s
+	if len(p.rw.stack) > 0 {
+		for s := range p.rw.stack {
+			p.remove <- s
+		}
 	}
 	p.rw.mtx.RUnlock()
 
