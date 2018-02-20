@@ -35,20 +35,38 @@ func (p *Pool) controlRead() {
 // controlWrite runs an infinite loop to take messages from inbound channel and send to ALL write goroutines
 func (p *Pool) controlWrite() {
 	log.Printf("ControlWrite started at %v\n", time.Now())
-	ticker := time.NewTicker(p.pingInterval)
+	if p.pingInterval > 0 {
+		ticker := time.NewTicker(p.pingInterval)
 
+		for {
+			select {
+			case wg := <-p.stopWriteControl:
+				log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
+				wg.Done()
+				return
+			case <-ticker.C:
+				p.rw.mtx.RLock()
+				for socket := range p.rw.stack {
+					socket.p2s <- &Message{ID: socket.id, Type: websocket.PingMessage}
+				}
+				p.rw.mtx.RUnlock()
+			case msg := <-p.Inbound:
+				p.rw.mtx.RLock()
+				for socket := range p.rw.stack {
+					socket.p2s <- msg
+				}
+				p.rw.mtx.RUnlock()
+			}
+		}
+	}
+
+	// loop without pinging connections
 	for {
 		select {
 		case wg := <-p.stopWriteControl:
 			log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
-		case <-ticker.C:
-			p.rw.mtx.RLock()
-			for socket := range p.rw.stack {
-				socket.p2s <- &Message{ID: socket.id, Type: websocket.PingMessage}
-			}
-			p.rw.mtx.RUnlock()
 		case msg := <-p.Inbound:
 			p.rw.mtx.RLock()
 			for socket := range p.rw.stack {
