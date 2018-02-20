@@ -39,14 +39,18 @@ func (p *Pool) controlWrite() {
 				return
 			case <-ticker.C:
 				p.rw.mtx.RLock()
-				for socket := range p.rw.stack {
-					socket.p2s <- &Message{ID: socket.id, Type: websocket.PingMessage}
+				if len(p.rw.stack) > 0 {
+					for socket := range p.rw.stack {
+						socket.p2s <- &Message{ID: socket.id, Type: websocket.PingMessage}
+					}
 				}
 				p.rw.mtx.RUnlock()
 			case msg := <-p.Inbound:
 				p.rw.mtx.RLock()
-				for socket := range p.rw.stack {
-					socket.p2s <- msg
+				if len(p.rw.stack) > 0 {
+					for socket := range p.rw.stack {
+						socket.p2s <- msg
+					}
 				}
 				p.rw.mtx.RUnlock()
 			}
@@ -62,8 +66,10 @@ func (p *Pool) controlWrite() {
 			return
 		case msg := <-p.Inbound:
 			p.rw.mtx.RLock()
-			for socket := range p.rw.stack {
-				socket.p2s <- msg
+			if len(p.rw.stack) > 0 {
+				for socket := range p.rw.stack {
+					socket.p2s <- msg
+				}
 			}
 			p.rw.mtx.RUnlock()
 		}
