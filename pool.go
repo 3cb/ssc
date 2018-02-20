@@ -186,7 +186,8 @@ func (p *Pool) RemoveSocket(id string) error {
 		p.rw.mtx.RLock()
 		for s := range p.rw.stack {
 			if id == s.id {
-				p.remove <- s
+				s.rQuit <- struct{}{}
+				s.wQuit <- struct{}{}
 				p.rw.mtx.RUnlock()
 				return nil
 			}
@@ -205,7 +206,8 @@ func (p *Pool) Stop() {
 	p.rw.mtx.RLock()
 	if len(p.rw.stack) > 0 {
 		for s := range p.rw.stack {
-			p.remove <- s
+			s.rQuit <- struct{}{}
+			s.wQuit <- struct{}{}
 		}
 	}
 	p.rw.mtx.RUnlock()

@@ -81,9 +81,6 @@ func (p *Pool) controlShutdown() {
 			log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
-		case s := <-p.remove:
-			s.rQuit <- struct{}{}
-			s.wQuit <- struct{}{}
 		case s := <-p.shutdown:
 			_, ok := p.rw.stack[s]
 			if ok {
