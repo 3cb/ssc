@@ -102,18 +102,26 @@ func TestPoolServer(t *testing.T) {
 		}
 	})
 
-	// t.Run("test RemoveSocket", func(t *testing.T) {
-	// 	before := pool.Count()
-	// 	err := pool.RemoveSocket(u3.String())
-	// 	if err != nil {
-	// 		t.Errorf("unable to remove socket from stack")
-	// 	}
-	// 	time.Sleep(time.Second * 10)
-	// 	after := pool.Count()
-	// 	if after != before-1 {
-	// 		t.Errorf("socket was not removed from stack: expected length %v; got length %v", before-1, after)
-	// 	}
-	// })
+	t.Run("test List", func(t *testing.T) {
+		expected := append(urls, u3.String())
+		got := pool.List()
+		if len(got) != len(expected) {
+			t.Errorf("expected %v; got %v", expected, got)
+		}
+		for _, url := range expected {
+			count := 0
+			for _, id := range got {
+				if id == url {
+					break
+				} else {
+					count++
+				}
+			}
+			if count == 3 {
+				t.Errorf("list does not contain correct ids: expected %v; got %v", expected, got)
+			}
+		}
+	})
 
 	t.Run("test WriteAll", func(t *testing.T) {
 		msg := &Message{
@@ -179,13 +187,46 @@ func TestPoolServer(t *testing.T) {
 		}
 	})
 
-	// t.Run("test Stop", func(t *testing.T) {
-	// 	before := pool.Count()
-	// 	pool.Stop()
-	// 	after := pool.Count()
+}
 
-	// 	if before == after || after != 0 {
-	// 		t.Errorf("Stop method did not remove all sockets from stack")
-	// 	}
-	// })
+func TestPoolClient(t *testing.T) {
+	pool := NewPool([]string{}, time.Second*30)
+	pool.Start()
+
+	upgrader := &websocket.Upgrader{}
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := pool.AddClientSocket("client1", upgrader, w, r)
+		if err != nil {
+			t.Fatalf("unable to connect new client socket: %s", err)
+		}
+		pool.Write(&Message{
+			ID:      "client1",
+			Type:    websocket.TextMessage,
+			Payload: []byte("Hi client1!"),
+		})
+	}))
+	u1, _ := url.Parse(srv1.URL)
+	u1.Scheme = "ws"
+
+	t.Run("test AddClientSocket", func(t *testing.T) {
+		expected := pool.Count() + 1
+		conn, _, err := websocket.DefaultDialer.Dial(u1.String(), nil)
+		if err != nil {
+			t.Fatalf("unable to connect to socket server: %s", err)
+		}
+		msgType, msg, err := conn.ReadMessage()
+		if err != nil {
+			t.Errorf("error reading message from pool to client: %s", err)
+		}
+		if msgType != websocket.TextMessage {
+			t.Errorf("wrong message type: expected %v; got %v", websocket.TextMessage, msgType)
+		}
+		if string(msg) != "Hi client1!" {
+			t.Errorf("wrong payload: expected %v; got %v", "Hi client1!", string(msg))
+		}
+		got := pool.Count()
+		if got != expected {
+			t.Errorf("socket not added to stack: expected %v; got %v", expected, got)
+		}
+	})
 }
