@@ -14,9 +14,6 @@ func (p *Pool) control() {
 	go p.controlShutdown()
 	go p.controlRead()
 	go p.controlWrite()
-	if p.pingInterval > 0 {
-		go p.controlPing()
-	}
 }
 
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
@@ -38,6 +35,7 @@ func (p *Pool) controlRead() {
 // controlWrite runs an infinite loop to take messages from inbound channel and send to ALL write goroutines
 func (p *Pool) controlWrite() {
 	log.Printf("ControlWrite started at %v\n", time.Now())
+	ticker := time.NewTicker(p.pingInterval)
 
 	for {
 		select {
@@ -45,6 +43,12 @@ func (p *Pool) controlWrite() {
 			log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
+		case <-ticker.C:
+			p.rw.mtx.RLock()
+			for socket := range p.rw.stack {
+				socket.p2s <- &Message{ID: socket.id, Type: websocket.PingMessage}
+			}
+			p.rw.mtx.RUnlock()
 		case msg := <-p.Inbound:
 			p.rw.mtx.RLock()
 			for socket := range p.rw.stack {
@@ -76,9 +80,6 @@ func (p *Pool) controlShutdown() {
 				s.close()
 				delete(p.rw.stack, s)
 				closed = true
-			} else {
-				p.rw.stack[s]++
-				delete(p.ping.stack, s)
 			}
 			p.rw.mtx.Unlock()
 
@@ -97,39 +98,6 @@ func (p *Pool) controlShutdown() {
 				}
 				p.rw.mtx.RUnlock()
 			}
-		}
-	}
-}
-
-// controlPing runs an infinite loop to send ping messages to websocket write goroutines at an interval defined with NewPool()
-func (p *Pool) controlPing() {
-	log.Printf("ControlPing started at %v\n", time.Now())
-
-	var t time.Duration
-	if p.pingInterval < (time.Second * 30) {
-		t = time.Second * 30
-	} else {
-		t = p.pingInterval
-	}
-	ticker := time.NewTicker(t)
-
-	for {
-		select {
-		case wg := <-p.stopPingControl:
-			log.Printf("ControlPing goroutine was stopped at %v\n", time.Now())
-			wg.Done()
-			return
-		case <-ticker.C:
-			p.ping.mtx.Lock()
-			for s, missed := range p.ping.stack {
-				if missed < 2 {
-					p.ping.stack[s]++
-					s.p2s <- &Message{Type: websocket.PingMessage}
-				} else {
-					p.remove <- s
-				}
-			}
-			p.ping.mtx.Unlock()
 		}
 	}
 }

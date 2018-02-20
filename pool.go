@@ -26,7 +26,6 @@ type Pool struct {
 	mtx        sync.Mutex
 	isDraining bool
 	rw
-	ping
 
 	// These fields are set with NewPool parameters
 	serverURLs   []string
@@ -64,18 +63,11 @@ type rw struct {
 	stack map[*socket]int
 }
 
-// ping holds map of sockets to keep track of unreturned pings
-type ping struct {
-	mtx   sync.RWMutex
-	stack map[*socket]int
-}
-
 // NewPool creates a new instance of Pool and returns a pointer to it
 func NewPool(urls []string, pingInt time.Duration) *Pool {
 	return &Pool{
 		isDraining: false,
 		rw:         rw{stack: make(map[*socket]int)},
-		ping:       ping{stack: make(map[*socket]int)},
 
 		serverURLs:   urls,
 		pingInterval: pingInt,

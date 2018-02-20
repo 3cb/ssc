@@ -45,9 +45,6 @@ func (s *socket) connectClient(p *Pool, upgrader *websocket.Upgrader, w http.Res
 	}
 	s.connection = c
 	s.connection.SetPongHandler(func(appData string) error {
-		p.rw.mtx.Lock()
-		p.rw.stack[s]--
-		p.rw.mtx.Unlock()
 		return nil
 	})
 	s.connection.SetCloseHandler(func(code int, text string) error {
@@ -59,10 +56,6 @@ func (s *socket) connectClient(p *Pool, upgrader *websocket.Upgrader, w http.Res
 	p.rw.mtx.Lock()
 	p.rw.stack[s] = 0
 	p.rw.mtx.Unlock()
-
-	p.ping.mtx.Lock()
-	p.ping.stack[s] = 0
-	p.ping.mtx.Unlock()
 
 	go s.read(p)
 	go s.write(p)
@@ -91,10 +84,6 @@ func (s *socket) connectServer(p *Pool) error {
 	p.rw.mtx.Lock()
 	p.rw.stack[s] = 0
 	p.rw.mtx.Unlock()
-
-	p.ping.mtx.Lock()
-	p.ping.stack[s] = 0
-	p.ping.mtx.Unlock()
 
 	go s.read(p)
 	go s.write(p)
