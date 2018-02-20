@@ -18,7 +18,7 @@ go get github.com/3cb/ssc
 Each WebSocket has its own readSocket and writeSocket goroutine but there is only one instance of each control goroutine per Pool:
 
 
-![Diagram](https://images2.imgbox.com/6c/f0/Z1ax6br1_o.png?download=true)
+![Diagram](https://images2.imgbox.com/ed/94/2MkYE7Np_o.png?download=true)
 
 ## Example Usage
 
