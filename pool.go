@@ -202,7 +202,6 @@ func (p *Pool) Stop() {
 	p.isDraining = true
 	p.mtx.Unlock()
 
-	wg := &sync.WaitGroup{}
 	p.rw.mtx.RLock()
 	if len(p.rw.stack) > 0 {
 		for s := range p.rw.stack {
@@ -213,6 +212,7 @@ func (p *Pool) Stop() {
 
 	<-p.allClosed
 
+	wg := &sync.WaitGroup{}
 	wg.Add(3)
 	p.stopReadControl <- wg
 	p.stopWriteControl <- wg
