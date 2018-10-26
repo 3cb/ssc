@@ -3,7 +3,6 @@ package ssc
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -98,7 +97,6 @@ func (p *Pool) Start() error {
 				p.Stop()
 				return err
 			}
-			log.Printf("Connected to websocket(%v)\n", url)
 		}
 	}
 	return nil

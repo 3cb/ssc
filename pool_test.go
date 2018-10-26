@@ -168,7 +168,7 @@ func TestPoolServer(t *testing.T) {
 		}
 
 		// test bad message formats(empty string and id not in stack)
-		for _ = range urls {
+		for range urls {
 			err := pool.Write(&Message{
 				ID:      "",
 				Type:    websocket.TextMessage,

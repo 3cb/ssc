@@ -3,7 +3,6 @@ package ssc
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -11,12 +10,9 @@ import (
 
 // controlRead runs an infinite loop to take messages from websocket servers and send them to the outbound channel
 func (p *Pool) controlRead() {
-	log.Printf("ControlRead started at %v\n", time.Now())
-
 	for {
 		select {
 		case wg := <-p.stopReadControl:
-			log.Printf("ControlRead goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
 		case msg := <-p.s2p:
@@ -27,14 +23,12 @@ func (p *Pool) controlRead() {
 
 // controlWrite runs an infinite loop to take messages from inbound channel and send to ALL write goroutines
 func (p *Pool) controlWrite() {
-	log.Printf("ControlWrite started at %v\n", time.Now())
 	if p.pingInterval > 0 {
 		ticker := time.NewTicker(p.pingInterval)
 
 		for {
 			select {
 			case wg := <-p.stopWriteControl:
-				log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 				wg.Done()
 				return
 			case <-ticker.C:
@@ -61,7 +55,6 @@ func (p *Pool) controlWrite() {
 	for {
 		select {
 		case wg := <-p.stopWriteControl:
-			log.Printf("ControlWrite goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
 		case msg := <-p.Inbound:
@@ -79,12 +72,9 @@ func (p *Pool) controlWrite() {
 // controlShutdown method listens for Error Messages and closes socket connections and removes them from stack
 // is Stop() method has been called, will signal that all read/write goroutines have been stoppped so that control goroutines and then be shut down
 func (p *Pool) controlShutdown() {
-	log.Printf("ControlShutdown started at %v\n", time.Now())
-
 	for {
 		select {
 		case wg := <-p.stopShutdownControl:
-			log.Printf("ControlShutdown goroutine was stopped at %v\n", time.Now())
 			wg.Done()
 			return
 		case s := <-p.shutdown:
