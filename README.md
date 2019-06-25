@@ -14,11 +14,6 @@ To install the package on your system:
 ```bash
 go get github.com/3cb/ssc
 ```
-## Pool Layout
-Each WebSocket has its own readSocket and writeSocket goroutine but there is only one instance of each control goroutine per Pool:
-
-
-![Diagram](https://images2.imgbox.com/ed/94/2MkYE7Np_o.png?download=true)
 
 ## Example Usage
 
@@ -111,7 +106,7 @@ pool.WriteAll(&Message{Type: websocket.TextMessage, Payload: []byte("Hello!")})
 // Another way to send a Message to all connected websockets is to send directly into the Pool.Inbound channel
 pool.Inbound <- &Message{Type: websocket.TextMessage, Payload: []byte("Hello!")}
 ```
-ssc provides a coupld of convenience methods as well:
+ssc provides a couple of convenience methods as well:
 ```go
 // Count returns the number of connections active in the `Pool`
 count := pool.Count()
